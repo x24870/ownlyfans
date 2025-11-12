@@ -38,5 +38,6 @@ contracts/.sui/
 *.tmp
 *.temp
 
-# .evn
+# .env
 .env
+.deployments

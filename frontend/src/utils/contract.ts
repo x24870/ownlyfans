@@ -8,7 +8,8 @@ import { suiClient } from "./suiClient";
 
 // Contract package ID (will be set after deployment)
 // 合約包 ID（部署後設定）
-let CONTRACT_PACKAGE_ID = "";
+let CONTRACT_PACKAGE_ID =
+  "0x1f6b00e0640bdab5a500778b73d7e91d59e413b792acf76a105c1e09fe2823cb";
 
 export function setContractPackageId(packageId: string) {
   CONTRACT_PACKAGE_ID = packageId;
@@ -33,7 +34,7 @@ export function createContentTransaction(
   const blobIdBytes = new TextEncoder().encode(blobId);
 
   tx.moveCall({
-    target: `${CONTRACT_PACKAGE_ID}::content_registry::create_content`,
+    target: `${CONTRACT_PACKAGE_ID}::content_registry::create_content_entry`,
     arguments: [
       tx.pure.vector("u8", Array.from(blobIdBytes)),
       tx.pure.u64(price),
@@ -58,7 +59,8 @@ export function purchaseContentTransaction(
 
   // Get ProcessedTx shared object (assuming it exists)
   // In production, this should be fetched from chain
-  const processedTxId = ""; // TODO: Get from chain after deployment
+  const processedTxId =
+    "0x2367d77eae91421453315724acb4323e98b1fd836c402e58dca2b42b087b999c"; // TODO: Get from chain after deployment
 
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::referral_split::purchase_content`,

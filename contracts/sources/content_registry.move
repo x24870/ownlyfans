@@ -80,6 +80,20 @@ public fun create_content(
     content
 }
 
+/// Entry function to create content and transfer to creator
+/// 創建內容並轉移給創作者的入口函數
+public entry fun create_content_entry(
+    blob_id: vector<u8>,
+    price: u64,
+    referral_split_ratio: u64,
+    ctx: &mut TxContext
+) {
+    let content = create_content(blob_id, price, referral_split_ratio, ctx);
+    // Transfer content to creator
+    // 將內容轉移給創作者
+    sui::transfer::transfer(content, sui::tx_context::sender(ctx));
+}
+
 /// Transfer content ownership (for future use)
 /// 轉移內容所有權（供未來使用）
 public fun transfer(content: Content, recipient: address, _ctx: &mut TxContext) {
