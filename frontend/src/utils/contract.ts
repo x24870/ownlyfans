@@ -60,7 +60,7 @@ export function purchaseContentTransaction(
   // Get ProcessedTx shared object (assuming it exists)
   // In production, this should be fetched from chain
   const processedTxId =
-    "0x2367d77eae91421453315724acb4323e98b1fd836c402e58dca2b42b087b999c"; // TODO: Get from chain after deployment
+    "0xb827d44e097733eaca8842a4d5448c1afff04007f3c4ec85ae43d430f8cc55de"; // TODO: Get from chain after deployment
 
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::referral_split::purchase_content`,
@@ -122,6 +122,74 @@ export async function getPurchaseEvents(
     return events.data;
   } catch (error) {
     console.error("Error fetching purchase events:", error);
+    return [];
+  }
+}
+
+/**
+ * Query creator's content objects
+ * 查詢創作者的內容對象
+ */
+export async function getCreatorContents(
+  creatorAddress: string
+): Promise<any[]> {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return [];
+    }
+
+    // Query Content objects owned by the creator
+    // 查詢創作者擁有的 Content 對象
+    const objects = await suiClient.getOwnedObjects({
+      owner: creatorAddress,
+      filter: {
+        StructType: `${CONTRACT_PACKAGE_ID}::content_registry::Content`,
+      },
+      options: {
+        showContent: true,
+        showType: true,
+      },
+    });
+
+    return objects.data;
+  } catch (error) {
+    console.error("Error fetching creator contents:", error);
+    return [];
+  }
+}
+
+/**
+ * Get created objects from transaction result
+ * 從交易結果獲取創建的對象 ID
+ */
+export async function getCreatedObjectsFromTransaction(
+  txDigest: string
+): Promise<string[]> {
+  try {
+    const tx = await suiClient.getTransactionBlock({
+      digest: txDigest,
+      options: {
+        showObjectChanges: true,
+        showEffects: true,
+      },
+    });
+
+    const createdObjects: string[] = [];
+
+    if (tx.objectChanges) {
+      for (const change of tx.objectChanges) {
+        if (
+          change.type === "created" &&
+          change.objectType?.includes("Content")
+        ) {
+          createdObjects.push(change.objectId);
+        }
+      }
+    }
+
+    return createdObjects;
+  } catch (error) {
+    console.error("Error fetching transaction objects:", error);
     return [];
   }
 }

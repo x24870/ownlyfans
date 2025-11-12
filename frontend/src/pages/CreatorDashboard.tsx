@@ -1,10 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useCurrentAccount,
   useSignAndExecuteTransaction,
 } from "@mysten/dapp-kit";
-import { createWalrusClient, uploadFileToWalrus } from "../utils/walrusHelpers";
-import { createContentTransaction } from "../utils/contract";
+import {
+  createWalrusClient,
+  uploadFileToWalrus,
+  readFileFromWalrus,
+} from "../utils/walrusHelpers";
+import {
+  createContentTransaction,
+  getCreatorContents,
+  getCreatedObjectsFromTransaction,
+} from "../utils/contract";
 import type { Transaction } from "@mysten/sui/transactions";
 
 interface Content {
@@ -13,6 +21,7 @@ interface Content {
   price: bigint;
   referralSplitRatio: number;
   createdAt: Date;
+  previewUrl?: string; // URL for image preview
 }
 
 export default function CreatorDashboard() {
@@ -26,6 +35,122 @@ export default function CreatorDashboard() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contents, setContents] = useState<Content[]>([]);
+  const [loadingContents, setLoadingContents] = useState(false);
+
+  // Load creator's contents when component mounts or account changes
+  // 當組件載入或賬戶變更時載入創作者的內容
+  useEffect(() => {
+    if (account) {
+      loadCreatorContents();
+    } else {
+      setContents([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account]);
+
+  // Cleanup preview URLs when component unmounts
+  // 組件卸載時清理預覽 URL
+  useEffect(() => {
+    return () => {
+      contents.forEach((content) => {
+        if (content.previewUrl) {
+          URL.revokeObjectURL(content.previewUrl);
+        }
+      });
+    };
+  }, [contents]);
+
+  const loadCreatorContents = async () => {
+    if (!account) return;
+
+    setLoadingContents(true);
+    try {
+      const objects = await getCreatorContents(account.address);
+
+      const contents: Content[] = objects.map((obj: any) => {
+        const contentData = obj.data?.content?.fields || {};
+
+        // Decode blob_id from vector<u8>
+        let blobId = "";
+        if (contentData.blob_id) {
+          try {
+            const blobIdBytes = Array.isArray(contentData.blob_id)
+              ? new Uint8Array(contentData.blob_id)
+              : new Uint8Array(Object.values(contentData.blob_id));
+            blobId = new TextDecoder().decode(blobIdBytes);
+          } catch (e) {
+            console.error("Error decoding blob_id:", e);
+            blobId = contentData.blob_id?.toString() || "";
+          }
+        }
+
+        return {
+          contentId: obj.data?.objectId || "",
+          blobId: blobId,
+          price: BigInt(contentData.price || 0),
+          referralSplitRatio: contentData.referral_split_ratio
+            ? Number(contentData.referral_split_ratio) / 100
+            : 0,
+          createdAt: contentData.created_at
+            ? new Date(Number(contentData.created_at))
+            : new Date(),
+        };
+      });
+
+      // Sort by creation date (newest first)
+      contents.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+      // Load preview images for image files
+      // 為圖片文件載入預覽圖
+      const contentsWithPreview = await Promise.all(
+        contents.map(async (content) => {
+          try {
+            // Try to load and create preview URL
+            // 嘗試載入並創建預覽 URL
+            const walrusClient = createWalrusClient();
+            const fileBytes = await readFileFromWalrus(
+              walrusClient,
+              content.blobId
+            );
+
+            // Check if it's an image by checking file signature or blob type
+            // 檢查是否為圖片（通過文件簽名或 blob 類型）
+            const blob = new Blob([new Uint8Array(fileBytes)]);
+            const url = URL.createObjectURL(blob);
+
+            // Simple check: try to create an image to see if it's valid
+            // 簡單檢查：嘗試創建圖片以查看是否有效
+            return new Promise<Content>((resolve) => {
+              const img = new Image();
+              img.onload = () => {
+                resolve({ ...content, previewUrl: url });
+              };
+              img.onerror = () => {
+                // Not an image or invalid, don't set previewUrl
+                // 不是圖片或無效，不設置 previewUrl
+                resolve(content);
+              };
+              img.src = url;
+            });
+          } catch (error) {
+            console.error(
+              "Error loading preview for content:",
+              content.contentId,
+              error
+            );
+            return content;
+          }
+        })
+      );
+
+      setContents(contentsWithPreview);
+    } catch (error) {
+      console.error("Error loading creator contents:", error);
+      setError("Failed to load contents / 載入內容失敗");
+    } finally {
+      setLoadingContents(false);
+    }
+  };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -114,12 +239,14 @@ export default function CreatorDashboard() {
           transaction: tx as any,
         },
         {
-          onSuccess: (result) => {
-            // Get content ID from transaction result
-            // 從交易結果獲取內容 ID
-            // Note: In production, you would query the transaction to get created objects
-            // 注意：在生產環境中，您需要查詢交易以獲取創建的對象
-            const contentId = result.digest; // Placeholder - would need to query for actual object ID
+          onSuccess: async (result) => {
+            // Get actual Content object ID from transaction result
+            // 從交易結果獲取實際的 Content 對象 ID
+            const createdObjects = await getCreatedObjectsFromTransaction(
+              result.digest
+            );
+
+            const contentId = createdObjects[0] || result.digest;
 
             const newContent: Content = {
               contentId,
@@ -140,6 +267,10 @@ export default function CreatorDashboard() {
               'input[type="file"]'
             ) as HTMLInputElement;
             if (fileInput) fileInput.value = "";
+
+            // Reload contents to ensure sync with chain
+            // 重新載入內容以確保與鏈同步
+            await loadCreatorContents();
           },
           onError: (error) => {
             setError(
@@ -267,16 +398,49 @@ export default function CreatorDashboard() {
       </div>
 
       {/* Content List */}
-      {contents.length > 0 && (
+      <div
+        style={{
+          padding: "20px",
+          border: "1px solid #ccc",
+          borderRadius: "8px",
+        }}
+      >
         <div
           style={{
-            padding: "20px",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "15px",
           }}
         >
           <h3>Your Contents / 您的內容</h3>
-          {contents.map((content, index) => (
+          <button
+            onClick={loadCreatorContents}
+            disabled={loadingContents}
+            style={{
+              padding: "5px 15px",
+              fontSize: "0.9em",
+              backgroundColor: "#2196F3",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loadingContents ? "not-allowed" : "pointer",
+            }}
+          >
+            {loadingContents ? "Loading... / 載入中..." : "Refresh / 刷新"}
+          </button>
+        </div>
+
+        {loadingContents && contents.length === 0 ? (
+          <p style={{ color: "#666" }}>Loading contents... / 載入內容中...</p>
+        ) : contents.length === 0 ? (
+          <p style={{ color: "#666" }}>
+            No content created yet. Upload your first content above!
+            <br />
+            尚未創建內容。請在上方上傳您的第一個內容！
+          </p>
+        ) : (
+          contents.map((content, index) => (
             <div
               key={index}
               style={{
@@ -285,27 +449,61 @@ export default function CreatorDashboard() {
                 background: "#f5f5f5",
                 borderRadius: "4px",
                 border: "1px solid #ddd",
+                display: "flex",
+                gap: "15px",
               }}
             >
-              <p style={{ margin: "0 0 5px 0", fontWeight: "bold" }}>
-                Content #{index + 1}
-              </p>
-              <p style={{ margin: "0", fontSize: "0.9em", color: "#666" }}>
-                Content ID: <code>{content.contentId || "Pending..."}</code>
-                <br />
-                Blob ID:{" "}
-                <code style={{ wordBreak: "break-all" }}>{content.blobId}</code>
-                <br />
-                Price: {Number(content.price) / 1e9} SUI
-                <br />
-                Referral Split: {content.referralSplitRatio}%
-                <br />
-                Created: {content.createdAt.toLocaleString()}
-              </p>
+              {/* Image Preview */}
+              {content.previewUrl && (
+                <div
+                  style={{
+                    flexShrink: 0,
+                    width: "150px",
+                    height: "150px",
+                    borderRadius: "4px",
+                    overflow: "hidden",
+                    background: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <img
+                    src={content.previewUrl}
+                    alt={`Content ${index + 1}`}
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "100%",
+                      objectFit: "contain",
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Content Info */}
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: "0 0 5px 0", fontWeight: "bold" }}>
+                  Content #{index + 1}
+                </p>
+                <p style={{ margin: "0", fontSize: "0.9em", color: "#666" }}>
+                  Content ID: <code>{content.contentId || "Pending..."}</code>
+                  <br />
+                  Blob ID:{" "}
+                  <code style={{ wordBreak: "break-all" }}>
+                    {content.blobId}
+                  </code>
+                  <br />
+                  Price: {Number(content.price) / 1e9} SUI
+                  <br />
+                  Referral Split: {content.referralSplitRatio}%
+                  <br />
+                  Created: {content.createdAt.toLocaleString()}
+                </p>
+              </div>
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   );
 }
