@@ -51,7 +51,11 @@ export default function CreatorDashboard() {
       const objects = await getCreatorContents(account.address);
 
       const contents: Content[] = objects.map((obj: any) => {
-        const contentData = obj.data?.content?.fields || {};
+        // Handle both owned and shared object structures
+        // 處理 owned 和 shared 對象結構
+        const contentData =
+          obj.content?.fields || obj.data?.content?.fields || {};
+        const objectId = obj.objectId || obj.data?.objectId || "";
 
         // Decode blob_id from vector<u8>
         let blobId = "";
@@ -68,7 +72,7 @@ export default function CreatorDashboard() {
         }
 
         return {
-          contentId: obj.data?.objectId || "",
+          contentId: objectId,
           blobId: blobId,
           price: BigInt(contentData.price || 0),
           referralSplitRatio: contentData.referral_split_ratio

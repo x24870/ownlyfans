@@ -111,7 +111,7 @@ export default function FanDashboard() {
     }
   };
 
-  const handlePurchase = async (contentId: string, _price: bigint) => {
+  const handlePurchase = async (contentId: string, price: bigint) => {
     if (!account) {
       setError("Please connect your wallet first / 請先連接您的錢包");
       return;
@@ -121,7 +121,7 @@ export default function FanDashboard() {
     setError(null);
 
     try {
-      const tx = purchaseContentTransaction(contentId, referralAddress);
+      const tx = purchaseContentTransaction(contentId, price, referralAddress);
 
       signAndExecute(
         {

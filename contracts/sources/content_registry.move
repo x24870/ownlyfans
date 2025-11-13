@@ -80,8 +80,8 @@ public fun create_content(
     content
 }
 
-/// Entry function to create content and transfer to creator
-/// 創建內容並轉移給創作者的入口函數
+/// Entry function to create content as shared object
+/// 創建內容為共享對象的入口函數
 public entry fun create_content_entry(
     blob_id: vector<u8>,
     price: u64,
@@ -89,9 +89,9 @@ public entry fun create_content_entry(
     ctx: &mut TxContext
 ) {
     let content = create_content(blob_id, price, referral_split_ratio, ctx);
-    // Transfer content to creator
-    // 將內容轉移給創作者
-    sui::transfer::transfer(content, sui::tx_context::sender(ctx));
+    // Make content a shared object so anyone can access it
+    // 將內容設為共享對象，以便任何人都可以訪問
+    sui::transfer::share_object(content);
 }
 
 /// Transfer content ownership (for future use)

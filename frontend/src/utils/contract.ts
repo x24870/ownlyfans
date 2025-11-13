@@ -9,7 +9,7 @@ import { suiClient } from "./suiClient";
 // Contract package ID (will be set after deployment)
 // 合約包 ID（部署後設定）
 let CONTRACT_PACKAGE_ID =
-  "0x1f6b00e0640bdab5a500778b73d7e91d59e413b792acf76a105c1e09fe2823cb";
+  "0xb75271ece8112bf58ea15c87d785b38c4d2530fe374fd150991e384cd1f2746e";
 
 export function setContractPackageId(packageId: string) {
   CONTRACT_PACKAGE_ID = packageId;
@@ -51,6 +51,7 @@ export function createContentTransaction(
  */
 export function purchaseContentTransaction(
   contentId: string,
+  price: bigint,
   referralAddress: string | null
 ): Transaction {
   const tx = new Transaction();
@@ -60,13 +61,17 @@ export function purchaseContentTransaction(
   // Get ProcessedTx shared object (assuming it exists)
   // In production, this should be fetched from chain
   const processedTxId =
-    "0xb827d44e097733eaca8842a4d5448c1afff04007f3c4ec85ae43d430f8cc55de"; // TODO: Get from chain after deployment
+    "0x396dc5718eca41c31311b3a88c71b48c2f929205a062a9b53c8b3381e7e1e79d"; // TODO: Get from chain after deployment
+
+  // Split payment coin from gas coin
+  // 從 gas coin 中 split 出支付金額
+  const [paymentCoin] = tx.splitCoins(tx.gas, [price]);
 
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::referral_split::purchase_content`,
     arguments: [
-      tx.object(contentId),
-      tx.gas,
+      tx.object(contentId), // Content is now a shared object, anyone can access
+      paymentCoin, // Use split coin instead of gas coin
       tx.pure.address(referral),
       tx.object(processedTxId), // ProcessedTx shared object
     ],
@@ -207,6 +212,8 @@ export async function hasUserPurchased(
 /**
  * Query creator's content objects
  * 查詢創作者的內容對象
+ * Note: Content is now a shared object, so we query by ContentCreated events
+ * 注意：Content 現在是共享對象，所以我們通過 ContentCreated 事件查詢
  */
 export async function getCreatorContents(
   creatorAddress: string
@@ -216,20 +223,38 @@ export async function getCreatorContents(
       return [];
     }
 
-    // Query Content objects owned by the creator
-    // 查詢創作者擁有的 Content 對象
-    const objects = await suiClient.getOwnedObjects({
-      owner: creatorAddress,
-      filter: {
-        StructType: `${CONTRACT_PACKAGE_ID}::content_registry::Content`,
+    // Query ContentCreated events for this creator
+    // 查詢此創作者的 ContentCreated 事件
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveModule: {
+          package: CONTRACT_PACKAGE_ID,
+          module: "content_registry",
+        },
       },
-      options: {
-        showContent: true,
-        showType: true,
-      },
+      limit: 100,
+      order: "descending",
     });
 
-    return objects.data;
+    // Filter events by creator and get content objects
+    // 按創作者過濾事件並獲取內容對象
+    const contents = [];
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (parsedJson?.creator === creatorAddress && parsedJson?.content_id) {
+        try {
+          const obj = await getContentInfo(parsedJson.content_id);
+          if (obj.data) {
+            contents.push(obj.data);
+          }
+        } catch (e) {
+          // Object might not exist, skip it
+          console.warn(`Content ${parsedJson.content_id} not found, skipping`);
+        }
+      }
+    }
+
+    return contents;
   } catch (error) {
     console.error("Error fetching creator contents:", error);
     return [];
@@ -256,11 +281,16 @@ export async function getCreatedObjectsFromTransaction(
 
     if (tx.objectChanges) {
       for (const change of tx.objectChanges) {
-        if (
-          change.type === "created" &&
-          change.objectType?.includes("Content")
-        ) {
-          createdObjects.push(change.objectId);
+        // Check for "created" objects (both owned and shared objects show as "created")
+        // 檢查 "created" 對象（owned 和 shared 對象都顯示為 "created"）
+        if (change.type === "created" && "objectType" in change) {
+          const createdChange = change as {
+            objectType: string;
+            objectId: string;
+          };
+          if (createdChange.objectType?.includes("Content")) {
+            createdObjects.push(createdChange.objectId);
+          }
         }
       }
     }

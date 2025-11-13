@@ -61,7 +61,7 @@ fun mark_tx_processed(tx_digest: vector<u8>, processed_tx: &mut ProcessedTx) {
 /// Purchase content with optional referral address
 /// 購買內容（可選推廣地址）
 public entry fun purchase_content(
-    content: &mut Content,
+    content: &Content,
     payment: Coin<SUI>,
     referral_address: address,
     processed_tx: &mut ProcessedTx,
