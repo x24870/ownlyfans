@@ -3,11 +3,7 @@ import {
   useCurrentAccount,
   useSignAndExecuteTransaction,
 } from "@mysten/dapp-kit";
-import {
-  createWalrusClient,
-  uploadFileToWalrus,
-  readFileFromWalrus,
-} from "../utils/walrusHelpers";
+import { createWalrusClient, uploadFileToWalrus } from "../utils/walrusHelpers";
 import {
   createContentTransaction,
   getCreatorContents,
@@ -21,7 +17,6 @@ interface Content {
   price: bigint;
   referralSplitRatio: number;
   createdAt: Date;
-  previewUrl?: string; // URL for image preview
 }
 
 export default function CreatorDashboard() {
@@ -47,18 +42,6 @@ export default function CreatorDashboard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account]);
-
-  // Cleanup preview URLs when component unmounts
-  // 組件卸載時清理預覽 URL
-  useEffect(() => {
-    return () => {
-      contents.forEach((content) => {
-        if (content.previewUrl) {
-          URL.revokeObjectURL(content.previewUrl);
-        }
-      });
-    };
-  }, [contents]);
 
   const loadCreatorContents = async () => {
     if (!account) return;
@@ -100,50 +83,7 @@ export default function CreatorDashboard() {
       // Sort by creation date (newest first)
       contents.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-      // Load preview images for image files
-      // 為圖片文件載入預覽圖
-      const contentsWithPreview = await Promise.all(
-        contents.map(async (content) => {
-          try {
-            // Try to load and create preview URL
-            // 嘗試載入並創建預覽 URL
-            const walrusClient = createWalrusClient();
-            const fileBytes = await readFileFromWalrus(
-              walrusClient,
-              content.blobId
-            );
-
-            // Check if it's an image by checking file signature or blob type
-            // 檢查是否為圖片（通過文件簽名或 blob 類型）
-            const blob = new Blob([new Uint8Array(fileBytes)]);
-            const url = URL.createObjectURL(blob);
-
-            // Simple check: try to create an image to see if it's valid
-            // 簡單檢查：嘗試創建圖片以查看是否有效
-            return new Promise<Content>((resolve) => {
-              const img = new Image();
-              img.onload = () => {
-                resolve({ ...content, previewUrl: url });
-              };
-              img.onerror = () => {
-                // Not an image or invalid, don't set previewUrl
-                // 不是圖片或無效，不設置 previewUrl
-                resolve(content);
-              };
-              img.src = url;
-            });
-          } catch (error) {
-            console.error(
-              "Error loading preview for content:",
-              content.contentId,
-              error
-            );
-            return content;
-          }
-        })
-      );
-
-      setContents(contentsWithPreview);
+      setContents(contents);
     } catch (error) {
       console.error("Error loading creator contents:", error);
       setError("Failed to load contents / 載入內容失敗");
@@ -449,57 +389,23 @@ export default function CreatorDashboard() {
                 background: "#f5f5f5",
                 borderRadius: "4px",
                 border: "1px solid #ddd",
-                display: "flex",
-                gap: "15px",
               }}
             >
-              {/* Image Preview */}
-              {content.previewUrl && (
-                <div
-                  style={{
-                    flexShrink: 0,
-                    width: "150px",
-                    height: "150px",
-                    borderRadius: "4px",
-                    overflow: "hidden",
-                    background: "#fff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <img
-                    src={content.previewUrl}
-                    alt={`Content ${index + 1}`}
-                    style={{
-                      maxWidth: "100%",
-                      maxHeight: "100%",
-                      objectFit: "contain",
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* Content Info */}
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: "0 0 5px 0", fontWeight: "bold" }}>
-                  Content #{index + 1}
-                </p>
-                <p style={{ margin: "0", fontSize: "0.9em", color: "#666" }}>
-                  Content ID: <code>{content.contentId || "Pending..."}</code>
-                  <br />
-                  Blob ID:{" "}
-                  <code style={{ wordBreak: "break-all" }}>
-                    {content.blobId}
-                  </code>
-                  <br />
-                  Price: {Number(content.price) / 1e9} SUI
-                  <br />
-                  Referral Split: {content.referralSplitRatio}%
-                  <br />
-                  Created: {content.createdAt.toLocaleString()}
-                </p>
-              </div>
+              <p style={{ margin: "0 0 5px 0", fontWeight: "bold" }}>
+                Content #{index + 1}
+              </p>
+              <p style={{ margin: "0", fontSize: "0.9em", color: "#666" }}>
+                Content ID: <code>{content.contentId || "Pending..."}</code>
+                <br />
+                Blob ID:{" "}
+                <code style={{ wordBreak: "break-all" }}>{content.blobId}</code>
+                <br />
+                Price: {Number(content.price) / 1e9} SUI
+                <br />
+                Referral Split: {content.referralSplitRatio}%
+                <br />
+                Created: {content.createdAt.toLocaleString()}
+              </p>
             </div>
           ))
         )}

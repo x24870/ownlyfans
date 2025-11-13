@@ -97,6 +97,61 @@ export async function getContentInfo(contentId: string) {
 }
 
 /**
+ * Query ContentCreated events to get all content
+ * 查詢 ContentCreated 事件以獲取所有內容
+ */
+export async function getAllContents(): Promise<any[]> {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return [];
+    }
+
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveModule: {
+          package: CONTRACT_PACKAGE_ID,
+          module: "content_registry",
+        },
+      },
+      limit: 100,
+      order: "descending",
+    });
+
+    // Get unique content IDs from events
+    // 從事件中獲取唯一的內容 ID
+    const contentIds = new Set<string>();
+    const contentMap = new Map<string, any>();
+
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (parsedJson?.content_id) {
+        const contentId = parsedJson.content_id;
+        if (!contentIds.has(contentId)) {
+          contentIds.add(contentId);
+          contentMap.set(contentId, {
+            contentId,
+            blobId: parsedJson.blob_id,
+            price: parsedJson.price,
+            referralSplitRatio: parsedJson.referral_split_ratio,
+            creator: parsedJson.creator,
+            createdAt: event.timestampMs
+              ? new Date(Number(event.timestampMs))
+              : new Date(),
+          });
+        }
+      }
+    }
+
+    // Return content data from events (objects are owned, so we use event data)
+    // 返回事件中的內容數據（對象是擁有的，所以我們使用事件數據）
+    return Array.from(contentMap.values());
+  } catch (error) {
+    console.error("Error fetching all contents:", error);
+    return [];
+  }
+}
+
+/**
  * Query ContentPurchased events
  * 查詢 ContentPurchased 事件
  */
@@ -123,6 +178,29 @@ export async function getPurchaseEvents(
   } catch (error) {
     console.error("Error fetching purchase events:", error);
     return [];
+  }
+}
+
+/**
+ * Check if user has purchased a content
+ * 檢查用戶是否已購買內容
+ */
+export async function hasUserPurchased(
+  contentId: string,
+  userAddress: string
+): Promise<boolean> {
+  try {
+    const events = await getPurchaseEvents();
+    return events.some((event: any) => {
+      const parsedJson = event.parsedJson;
+      return (
+        parsedJson?.content_id === contentId &&
+        parsedJson?.buyer === userAddress
+      );
+    });
+  } catch (error) {
+    console.error("Error checking purchase status:", error);
+    return false;
   }
 }
 

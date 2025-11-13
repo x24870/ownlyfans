@@ -4,7 +4,11 @@ import {
   useSignAndExecuteTransaction,
 } from "@mysten/dapp-kit";
 import { readFileFromWalrus, createWalrusClient } from "../utils/walrusHelpers";
-import { purchaseContentTransaction } from "../utils/contract";
+import {
+  purchaseContentTransaction,
+  getAllContents,
+  hasUserPurchased,
+} from "../utils/contract";
 
 interface ContentItem {
   contentId: string;
@@ -20,6 +24,7 @@ export default function FanDashboard() {
 
   const [contents, setContents] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingContents, setLoadingContents] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [viewingContent, setViewingContent] = useState<string | null>(null);
@@ -33,13 +38,78 @@ export default function FanDashboard() {
   };
   const referralAddress = getReferralAddress();
 
+  // Load all contents when component mounts or account changes
+  // 當組件載入或賬戶變更時載入所有內容
   useEffect(() => {
-    // In a real app, this would fetch content from the chain
-    // For PoC, we'll use a placeholder
-    // 在真實應用中，這將從鏈上獲取內容
-    // 對於 PoC，我們使用佔位符
-    setContents([]);
-  }, []);
+    loadAllContents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account]);
+
+  const loadAllContents = async () => {
+    setLoadingContents(true);
+    setError(null);
+
+    try {
+      const allContents = await getAllContents();
+
+      // Check purchase status for each content if user is connected
+      // 如果用戶已連接，檢查每個內容的購買狀態
+      const contentsWithPurchaseStatus: ContentItem[] = await Promise.all(
+        allContents.map(async (content: any) => {
+          let purchased = false;
+          if (account) {
+            purchased = await hasUserPurchased(
+              content.contentId,
+              account.address
+            );
+          }
+
+          // Decode blob_id
+          let blobId = "";
+          if (content.blobId) {
+            try {
+              if (Array.isArray(content.blobId)) {
+                blobId = new TextDecoder().decode(
+                  new Uint8Array(content.blobId)
+                );
+              } else if (typeof content.blobId === "string") {
+                blobId = content.blobId;
+              } else {
+                blobId = new TextDecoder().decode(
+                  new Uint8Array(Object.values(content.blobId))
+                );
+              }
+            } catch (e) {
+              console.error("Error decoding blob_id:", e);
+              blobId = content.blobId?.toString() || "";
+            }
+          }
+
+          return {
+            contentId: content.contentId,
+            blobId: blobId,
+            price: BigInt(content.price || 0),
+            creator: content.creator || "",
+            purchased,
+          };
+        })
+      );
+
+      // Contents are already sorted by event timestamp (newest first)
+      // 內容已按事件時間戳排序（最新的在前）
+
+      setContents(contentsWithPurchaseStatus);
+    } catch (err) {
+      console.error("Error loading contents:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load contents / 載入內容失敗"
+      );
+    } finally {
+      setLoadingContents(false);
+    }
+  };
 
   const handlePurchase = async (contentId: string, _price: bigint) => {
     if (!account) {
@@ -58,14 +128,10 @@ export default function FanDashboard() {
           transaction: tx as any,
         },
         {
-          onSuccess: () => {
-            // Mark content as purchased
-            // 標記內容為已購買
-            setContents((prev) =>
-              prev.map((c) =>
-                c.contentId === contentId ? { ...c, purchased: true } : c
-              )
-            );
+          onSuccess: async () => {
+            // Reload contents to update purchase status
+            // 重新載入內容以更新購買狀態
+            await loadAllContents();
             setPurchasing(null);
 
             // Generate referral link
@@ -196,9 +262,35 @@ export default function FanDashboard() {
           borderRadius: "8px",
         }}
       >
-        <h3>Available Content / 可用內容</h3>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "15px",
+          }}
+        >
+          <h3>Available Content / 可用內容</h3>
+          <button
+            onClick={loadAllContents}
+            disabled={loadingContents}
+            style={{
+              padding: "5px 15px",
+              fontSize: "0.9em",
+              backgroundColor: "#2196F3",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loadingContents ? "not-allowed" : "pointer",
+            }}
+          >
+            {loadingContents ? "Loading... / 載入中..." : "Refresh / 刷新"}
+          </button>
+        </div>
 
-        {contents.length === 0 ? (
+        {loadingContents && contents.length === 0 ? (
+          <p style={{ color: "#666" }}>Loading contents... / 載入內容中...</p>
+        ) : contents.length === 0 ? (
           <p style={{ color: "#666" }}>
             No content available yet. Content will appear here after creators
             upload.
