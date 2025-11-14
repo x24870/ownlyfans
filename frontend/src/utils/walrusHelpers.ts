@@ -77,18 +77,31 @@ export async function uploadFileToWalrus(
 }
 
 /**
- * Read a file from Walrus
- * 從 Walrus 讀取文件
+ * Read a file from Walrus using aggregator API
+ * 使用 aggregator API 從 Walrus 讀取文件
  *
- * @param client - WalrusClient instance
+ * @param _client - WalrusClient instance (not used, kept for compatibility)
  * @param blobId - The blob ID of the file to retrieve
+ * @param network - Network name (default: "testnet")
  * @returns Promise resolving to file contents as Uint8Array
  */
 export async function readFileFromWalrus(
-  client: WalrusClient,
-  blobId: string
+  _client: WalrusClient,
+  blobId: string,
+  network: "testnet" | "mainnet" = "testnet"
 ): Promise<Uint8Array> {
-  const blob = await client.readBlob({ blobId });
-  return blob;
-}
+  // Use aggregator API to fetch the blob
+  // 使用 aggregator API 獲取 blob
+  const aggregatorUrl = `https://aggregator.walrus-${network}.walrus.space/v1/blobs/${blobId}`;
 
+  const response = await fetch(aggregatorUrl);
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch blob from Walrus: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}

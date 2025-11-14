@@ -4,6 +4,7 @@ import {
   useSignAndExecuteTransaction,
 } from "@mysten/dapp-kit";
 import { readFileFromWalrus, createWalrusClient } from "../utils/walrusHelpers";
+import { network } from "../utils/suiClient";
 import {
   purchaseContentTransaction,
   getAllContents,
@@ -165,7 +166,7 @@ export default function FanDashboard() {
 
     try {
       const walrusClient = createWalrusClient();
-      const fileBytes = await readFileFromWalrus(walrusClient, blobId);
+      const fileBytes = await readFileFromWalrus(walrusClient, blobId, network);
 
       // Create object URL for display
       // 創建用於顯示的對象 URL
