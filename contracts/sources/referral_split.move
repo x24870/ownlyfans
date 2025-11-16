@@ -1,12 +1,9 @@
 module ownlyfans::referral_split;
 
 use sui::coin::{Self, Coin};
-use sui::balance::{Self, Balance};
+use sui::balance;
 use sui::sui::SUI;
-use sui::tx_context::{TxContext};
 use sui::event;
-use sui::object::{UID, ID};
-use sui::transfer;
 use ownlyfans::content_registry::{Self, Content};
 
 /// Event emitted when content is purchased
@@ -20,68 +17,15 @@ public struct ContentPurchased has copy, drop {
     creator_share: u64,
 }
 
-/// Track processed transactions to prevent duplicate profit distribution
-/// 追蹤已處理的交易以防止重複分潤
-public struct ProcessedTx has key {
-    id: UID,
-    processed_txs: vector<vector<u8>>, // Store transaction digests
-}
-
-/// Global state for tracking processed transactions
-/// 用於追蹤已處理交易的全局狀態
-fun init(ctx: &mut TxContext) {
-    let processed_tx = ProcessedTx {
-        id: sui::object::new(ctx),
-        processed_txs: vector::empty(),
-    };
-    transfer::share_object(processed_tx);
-}
-
-/// Check if transaction has been processed
-/// 檢查交易是否已處理
-fun is_tx_processed(tx_digest: &vector<u8>, processed_tx: &ProcessedTx): bool {
-    let len = vector::length(&processed_tx.processed_txs);
-    let mut i = 0;
-    while (i < len) {
-        let stored_digest = vector::borrow(&processed_tx.processed_txs, i);
-        if (*stored_digest == *tx_digest) {
-            return true
-        };
-        i = i + 1;
-    };
-    false
-}
-
-/// Mark transaction as processed
-/// 標記交易為已處理
-fun mark_tx_processed(tx_digest: vector<u8>, processed_tx: &mut ProcessedTx) {
-    vector::push_back(&mut processed_tx.processed_txs, tx_digest);
-}
-
 /// Purchase content with optional referral address
 /// 購買內容（可選推廣地址）
 public entry fun purchase_content(
     content: &Content,
     payment: Coin<SUI>,
     referral_address: address,
-    processed_tx: &mut ProcessedTx,
     ctx: &mut TxContext
 ) {
     let buyer = sui::tx_context::sender(ctx);
-    let tx_digest_ref = sui::tx_context::digest(ctx);
-    let tx_digest = *tx_digest_ref;
-
-    // Anti-self-referral: Reject if buyer is the same as referral
-    // 防自推廣：如果購買者與推廣者相同則拒絕
-    assert!(buyer != referral_address, 1);
-
-    // Anti-duplicate profit: Check if transaction has been processed
-    // 防重複分潤：檢查交易是否已處理
-    assert!(!is_tx_processed(&tx_digest, processed_tx), 2);
-    
-    // Mark transaction as processed
-    // 標記交易為已處理
-    mark_tx_processed(tx_digest, processed_tx);
 
     let price = content_registry::get_price(content);
     let referral_split_ratio = content_registry::get_referral_split_ratio(content);
@@ -94,13 +38,19 @@ public entry fun purchase_content(
     
     // Verify payment amount
     // 驗證付款金額
-    assert!(payment_amount >= price, 3);
+    assert!(payment_amount >= price, 1);
 
     // Calculate split amounts
     // 計算分配金額
+    // Anti-self-referral: If buyer is the referral or creator is the referral, no referral reward
+    // 防自推廣：如果購買者是推廣者或創作者是推廣者，則無推廣獎勵
     let referral_share = if (referral_address == @0x0) {
         // No referral, all goes to creator
         // 無推廣，全部歸創作者
+        0
+    } else if (buyer == referral_address || creator == referral_address) {
+        // Anti-self-referral: No referral reward for self-referral
+        // 防自推廣：自推廣無推廣獎勵
         0
     } else {
         (payment_amount * referral_split_ratio) / 10000

@@ -1,8 +1,6 @@
 module ownlyfans::seal_access;
 
-use sui::tx_context::TxContext;
 use sui::event;
-use sui::object::ID;
 use ownlyfans::content_registry::{Self, Content};
 
 /// Event emitted when Seal SDK requests access approval

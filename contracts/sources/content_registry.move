@@ -1,9 +1,6 @@
 module ownlyfans::content_registry;
 
-use sui::object::{UID};
-use sui::tx_context::{TxContext};
 use sui::event;
-use sui::object::ID;
 
 /// Content information stored on-chain
 /// 鏈上存儲的內容信息

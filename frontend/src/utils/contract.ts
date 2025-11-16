@@ -58,11 +58,6 @@ export function purchaseContentTransaction(
 
   const referral = referralAddress || "0x0";
 
-  // Get ProcessedTx shared object (assuming it exists)
-  // In production, this should be fetched from chain
-  const processedTxId =
-    "0x396dc5718eca41c31311b3a88c71b48c2f929205a062a9b53c8b3381e7e1e79d"; // TODO: Get from chain after deployment
-
   // Split payment coin from gas coin
   // 從 gas coin 中 split 出支付金額
   const [paymentCoin] = tx.splitCoins(tx.gas, [price]);
@@ -73,7 +68,6 @@ export function purchaseContentTransaction(
       tx.object(contentId), // Content is now a shared object, anyone can access
       paymentCoin, // Use split coin instead of gas coin
       tx.pure.address(referral),
-      tx.object(processedTxId), // ProcessedTx shared object
     ],
   });
 
