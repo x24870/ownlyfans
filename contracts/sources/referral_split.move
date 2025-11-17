@@ -5,6 +5,7 @@ use sui::balance;
 use sui::sui::SUI;
 use sui::event;
 use ownlyfans::content_registry::{Self, Content};
+use ownlyfans::allowlist::{Self, Allowlist};
 
 /// Event emitted when content is purchased
 /// 購買內容時發出的事件
@@ -21,6 +22,7 @@ public struct ContentPurchased has copy, drop {
 /// 購買內容（可選推廣地址）
 public entry fun purchase_content(
     content: &Content,
+    allowlist: &mut Allowlist,
     payment: Coin<SUI>,
     referral_address: address,
     ctx: &mut TxContext
@@ -30,6 +32,12 @@ public entry fun purchase_content(
     let price = content_registry::get_price(content);
     let referral_split_ratio = content_registry::get_referral_split_ratio(content);
     let creator = content_registry::get_creator(content);
+    
+    // Verify allowlist matches content
+    // 驗證允許列表與內容匹配
+    let content_id = content_registry::get_content_id(content);
+    let allowlist_content_id = allowlist::get_content_id(allowlist);
+    assert!(content_id == allowlist_content_id, 4);
 
     // Convert Coin to Balance for splitting
     // 將 Coin 轉換為 Balance 以便分割
@@ -77,6 +85,10 @@ public entry fun purchase_content(
         transfer::public_transfer(return_coin, buyer);
     };
 
+    // Add buyer to allowlist for content access
+    // 將購買者添加到允許列表以獲得內容訪問權限
+    allowlist::add_buyer(allowlist, buyer);
+    
     // Emit purchase event
     // 發出購買事件
     event::emit(ContentPurchased {

@@ -1,15 +1,20 @@
 module ownlyfans::content_registry;
 
 use sui::event;
+use ownlyfans::creator_registry::{Self, Creator};
+use ownlyfans::allowlist::{Self, Allowlist};
 
 /// Content information stored on-chain
 /// 鏈上存儲的內容信息
 public struct Content has key {
     id: UID,
-    blob_id: vector<u8>,              // Walrus blob ID
+    blob_id: vector<u8>,              // Walrus blob ID (encrypted)
     price: u64,                       // Price in MIST (1 SUI = 10^9 MIST)
     referral_split_ratio: u64,        // Referral split ratio in basis points (e.g., 1500 = 15%)
-    creator: address,                  // Creator address
+    creator: address,                  // Creator address (for backwards compatibility)
+    creator_id: ID,                    // Reference to Creator object
+    allowlist_id: ID,                  // Reference to Allowlist object
+    seal_suffix: vector<u8>,          // Seal identity suffix (deterministic)
     created_at: u64,                  // Timestamp
 }
 
@@ -21,6 +26,9 @@ public struct ContentCreated has copy, drop {
     price: u64,
     referral_split_ratio: u64,
     creator: address,
+    creator_id: ID,
+    allowlist_id: ID,
+    seal_suffix: vector<u8>,
 }
 
 /// Get content information
@@ -45,24 +53,55 @@ public fun get_creator(content: &Content): address {
     content.creator
 }
 
-/// Create new content
-/// 創建新內容
-public fun create_content(
+public fun get_creator_id(content: &Content): ID {
+    content.creator_id
+}
+
+public fun get_allowlist_id(content: &Content): ID {
+    content.allowlist_id
+}
+
+public fun get_seal_suffix(content: &Content): vector<u8> {
+    content.seal_suffix
+}
+
+/// Create new content with Seal integration
+/// 使用 Seal 整合創建新內容
+public fun create_content_with_seal(
+    creator: &mut Creator,
     blob_id: vector<u8>,
     price: u64,
     referral_split_ratio: u64,
     ctx: &mut TxContext
-): Content {
+): (Content, Allowlist) {
+    let creator_address = creator_registry::get_owner(creator);
+    let creator_id = creator_registry::get_creator_id(creator);
+    
+    // Increment content count and get seal suffix
+    // 增加內容計數並獲取 seal 後綴
+    let seal_suffix = creator_registry::increment_content_count(creator);
+    
+    // Create content ID placeholder (will be set after object creation)
+    // 創建內容 ID 佔位符（將在對象創建後設置）
+    let content_uid = sui::object::new(ctx);
+    let content_id = sui::object::uid_to_inner(&content_uid);
+    
+    // Create allowlist for this content
+    // 為此內容創建允許列表
+    let allowlist = allowlist::create_allowlist(content_id, ctx);
+    let allowlist_id = allowlist::get_allowlist_id(&allowlist);
+    
     let content = Content {
-        id: sui::object::new(ctx),
+        id: content_uid,
         blob_id,
         price,
         referral_split_ratio,
-        creator: sui::tx_context::sender(ctx),
+        creator: creator_address,
+        creator_id,
+        allowlist_id,
+        seal_suffix,
         created_at: sui::tx_context::epoch_timestamp_ms(ctx),
     };
-
-    let content_id = sui::object::id(&content);
     
     // Emit event
     // 發出事件
@@ -71,24 +110,40 @@ public fun create_content(
         blob_id,
         price,
         referral_split_ratio,
-        creator: sui::tx_context::sender(ctx),
+        creator: creator_address,
+        creator_id,
+        allowlist_id,
+        seal_suffix,
     });
 
-    content
+    (content, allowlist)
 }
 
 /// Entry function to create content as shared object
 /// 創建內容為共享對象的入口函數
 public entry fun create_content_entry(
+    creator: &mut Creator,
     blob_id: vector<u8>,
     price: u64,
     referral_split_ratio: u64,
     ctx: &mut TxContext
 ) {
-    let content = create_content(blob_id, price, referral_split_ratio, ctx);
-    // Make content a shared object so anyone can access it
-    // 將內容設為共享對象，以便任何人都可以訪問
+    // Verify caller is the creator owner
+    // 驗證調用者是創作者擁有者
+    assert!(sui::tx_context::sender(ctx) == creator_registry::get_owner(creator), 1);
+    
+    let (content, allowlist) = create_content_with_seal(
+        creator,
+        blob_id,
+        price,
+        referral_split_ratio,
+        ctx
+    );
+    
+    // Make both content and allowlist shared objects
+    // 將內容和允許列表都設為共享對象
     sui::transfer::share_object(content);
+    allowlist::share_allowlist(allowlist);
 }
 
 /// Transfer content ownership (for future use)
