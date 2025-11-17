@@ -8,7 +8,13 @@ import {
   createContentTransaction,
   getCreatorContents,
   getCreatedObjectsFromTransaction,
+  registerCreatorTransaction,
+  getCreatorByOwner,
 } from "../utils/contract";
+import {
+  encryptWithSeal,
+  encodeSealIdentityFromAddress,
+} from "../utils/sealHelpers";
 import type { Transaction } from "@mysten/sui/transactions";
 
 interface Content {
@@ -32,16 +38,39 @@ export default function CreatorDashboard() {
   const [contents, setContents] = useState<Content[]>([]);
   const [loadingContents, setLoadingContents] = useState(false);
 
-  // Load creator's contents when component mounts or account changes
-  // 當組件載入或賬戶變更時載入創作者的內容
+  // Creator registration state
+  // 創作者註冊狀態
+  const [creatorInfo, setCreatorInfo] = useState<any>(null);
+  const [loadingCreator, setLoadingCreator] = useState(false);
+  const [subscriptionPrice, setSubscriptionPrice] = useState<string>("1.0");
+  const [registering, setRegistering] = useState(false);
+
+  // Load creator info when component mounts or account changes
+  // 當組件載入或賬戶變更時載入創作者信息
   useEffect(() => {
     if (account) {
+      loadCreatorInfo();
       loadCreatorContents();
     } else {
       setContents([]);
+      setCreatorInfo(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account]);
+
+  const loadCreatorInfo = async () => {
+    if (!account) return;
+
+    setLoadingCreator(true);
+    try {
+      const creator = await getCreatorByOwner(account.address);
+      setCreatorInfo(creator);
+    } catch (error) {
+      console.error("Error loading creator info:", error);
+    } finally {
+      setLoadingCreator(false);
+    }
+  };
 
   const loadCreatorContents = async () => {
     if (!account) return;
@@ -96,6 +125,53 @@ export default function CreatorDashboard() {
     }
   };
 
+  const handleRegisterCreator = async () => {
+    if (!account) {
+      setError("Please connect your wallet first / 請先連接您的錢包");
+      return;
+    }
+
+    const priceInMist = BigInt(Math.floor(parseFloat(subscriptionPrice) * 1e9));
+    if (priceInMist <= 0) {
+      setError(
+        "Please enter a valid subscription price / 請輸入有效的訂閱價格"
+      );
+      return;
+    }
+
+    setRegistering(true);
+    setError(null);
+
+    try {
+      const tx = registerCreatorTransaction(priceInMist);
+
+      signAndExecute(
+        { transaction: tx as any },
+        {
+          onSuccess: async () => {
+            await loadCreatorInfo();
+            setRegistering(false);
+            setSubscriptionPrice("1.0");
+          },
+          onError: (error) => {
+            setError(
+              error.message || "Failed to register as creator / 註冊創作者失敗"
+            );
+            setRegistering(false);
+          },
+        }
+      );
+    } catch (err) {
+      console.error("Error registering creator:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to register as creator / 註冊創作者失敗"
+      );
+      setRegistering(false);
+    }
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -112,6 +188,11 @@ export default function CreatorDashboard() {
 
     if (!account) {
       setError("Please connect your wallet first / 請先連接您的錢包");
+      return;
+    }
+
+    if (!creatorInfo) {
+      setError("Please register as creator first / 請先註冊為創作者");
       return;
     }
 
@@ -133,9 +214,30 @@ export default function CreatorDashboard() {
     setError(null);
 
     try {
-      // Step 1: Upload file to Walrus
-      // 步驟 1：上傳文件到 Walrus
+      // Step 1: Read and encrypt file with Seal
+      // 步驟 1：讀取並使用 Seal 加密文件
       const fileBytes = new Uint8Array(await selectedFile.arrayBuffer());
+
+      const creatorFields = creatorInfo.data?.content?.fields as any;
+      const contentCount = creatorFields?.content_count || 0;
+      const sealSuffix = new Uint8Array([
+        ...new Uint8Array(
+          new BigUint64Array([BigInt(contentCount) + BigInt(1)]).buffer
+        ),
+      ]);
+
+      const sealIdHex = encodeSealIdentityFromAddress(
+        account.address,
+        sealSuffix
+      );
+
+      const { encryptedObject } = await encryptWithSeal({
+        data: fileBytes,
+        sealIdHex,
+      });
+
+      // Step 2: Upload encrypted file to Walrus
+      // 步驟 2：上傳加密文件到 Walrus
       const walrusClient = createWalrusClient();
 
       const executeTransaction = (transaction: Transaction) => {
@@ -158,7 +260,7 @@ export default function CreatorDashboard() {
 
       const walrusResult = await uploadFileToWalrus(
         walrusClient,
-        fileBytes,
+        encryptedObject, // Upload encrypted bytes
         account.address,
         executeTransaction,
         10, // epochs
@@ -167,8 +269,8 @@ export default function CreatorDashboard() {
 
       setUploading(false);
 
-      // Step 2: Create content on-chain
-      // 步驟 2：在鏈上創建內容
+      // Step 3: Create content on-chain
+      // 步驟 3：在鏈上創建內容
       const priceInMist = BigInt(Math.floor(parseFloat(price) * 1e9)); // Convert SUI to MIST
       const ratioInBasisPoints = ratio * 100; // Convert percentage to basis points
 
@@ -239,12 +341,98 @@ export default function CreatorDashboard() {
     <div>
       <h2>Creator Dashboard / 創作者儀表板</h2>
 
+      {/* Creator Registration Section */}
+      {loadingCreator ? (
+        <div style={{ padding: "20px", textAlign: "center" }}>
+          <p>Loading creator status... / 載入創作者狀態...</p>
+        </div>
+      ) : !creatorInfo ? (
+        <div
+          style={{
+            padding: "20px",
+            border: "2px solid #ff9800",
+            borderRadius: "8px",
+            marginBottom: "20px",
+            background: "#fff3e0",
+          }}
+        >
+          <h3>Register as Creator / 註冊為創作者</h3>
+          <p style={{ color: "#666", marginBottom: "15px" }}>
+            You need to register as a creator before uploading content.
+            <br />
+            您需要先註冊為創作者才能上傳內容。
+          </p>
+
+          <div style={{ marginBottom: "15px" }}>
+            <label>
+              Subscription Price (SUI) / 訂閱價格（SUI）:
+              <input
+                type="number"
+                step="0.1"
+                value={subscriptionPrice}
+                onChange={(e) => setSubscriptionPrice(e.target.value)}
+                disabled={registering}
+                style={{ marginLeft: "10px", width: "150px" }}
+                placeholder="1.0"
+              />
+            </label>
+            <div style={{ fontSize: "0.8em", color: "#666", marginTop: "5px" }}>
+              Users can subscribe to access all your content
+              <br />
+              用戶可以訂閱以訪問您的所有內容
+            </div>
+          </div>
+
+          <button
+            onClick={handleRegisterCreator}
+            disabled={registering}
+            style={{
+              padding: "10px 20px",
+              fontSize: "16px",
+              backgroundColor: registering ? "#ccc" : "#ff9800",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: registering ? "not-allowed" : "pointer",
+            }}
+          >
+            {registering
+              ? "Registering... / 註冊中..."
+              : "Register as Creator / 註冊為創作者"}
+          </button>
+        </div>
+      ) : (
+        <div
+          style={{
+            padding: "15px",
+            background: "#e8f5e9",
+            borderRadius: "4px",
+            marginBottom: "20px",
+          }}
+        >
+          <p style={{ margin: 0 }}>
+            <strong>✓ Registered as Creator / 已註冊為創作者</strong>
+            <br />
+            <span style={{ fontSize: "0.9em", color: "#666" }}>
+              Subscription Price:{" "}
+              {Number(
+                (creatorInfo.data?.content?.fields as any)
+                  ?.subscription_price || 0
+              ) / 1e9}{" "}
+              SUI
+            </span>
+          </p>
+        </div>
+      )}
+
       <div
         style={{
           padding: "20px",
           border: "1px solid #ccc",
           borderRadius: "8px",
           marginBottom: "20px",
+          opacity: !creatorInfo ? 0.5 : 1,
+          pointerEvents: !creatorInfo ? "none" : "auto",
         }}
       >
         <h3>Upload Content / 上傳內容</h3>

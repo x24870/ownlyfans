@@ -9,14 +9,29 @@ import {
   purchaseContentTransaction,
   getAllContents,
   hasUserPurchased,
+  hasContentAccess,
+  subscribeCreatorTransaction,
+  getSubscription,
+  getCreatorByOwner,
+  buildSealApproveTransaction,
 } from "../utils/contract";
+import {
+  decryptWithSeal,
+  getOrCreateSessionKey,
+  encodeSealIdentityFromAddress,
+} from "../utils/sealHelpers";
+import type { PersonalMessageSigner } from "../utils/sealHelpers";
 
 interface ContentItem {
   contentId: string;
   blobId: string;
   price: bigint;
   creator: string;
+  creatorId: string;
+  allowlistId: string;
+  sealSuffix: number[];
   purchased: boolean;
+  hasAccess: boolean;
 }
 
 export default function FanDashboard() {
@@ -28,8 +43,16 @@ export default function FanDashboard() {
   const [loadingContents, setLoadingContents] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [subscribing, setSubscribing] = useState<string | null>(null);
   const [viewingContent, setViewingContent] = useState<string | null>(null);
   const [contentUrl, setContentUrl] = useState<string | null>(null);
+
+  // Track subscriptions by creator ID
+  // 按創作者 ID 跟踪訂閱
+  const [subscriptions, setSubscriptions] = useState<Map<string, any>>(
+    new Map()
+  );
+  const [creators, setCreators] = useState<Map<string, any>>(new Map());
 
   // Get referral address from URL
   // 從 URL 獲取推廣地址
@@ -53,13 +76,55 @@ export default function FanDashboard() {
     try {
       const allContents = await getAllContents();
 
-      // Check purchase status for each content if user is connected
-      // 如果用戶已連接，檢查每個內容的購買狀態
-      const contentsWithPurchaseStatus: ContentItem[] = await Promise.all(
+      // Load unique creators and subscriptions
+      // 載入唯一的創作者和訂閱
+      const uniqueCreators = new Set<string>();
+      allContents.forEach((content: any) => {
+        if (content.creator) {
+          uniqueCreators.add(content.creator);
+        }
+      });
+
+      // Fetch creator info and subscriptions
+      // 獲取創作者信息和訂閱
+      const newCreators = new Map();
+      const newSubscriptions = new Map();
+
+      for (const creatorAddr of uniqueCreators) {
+        try {
+          const creator = await getCreatorByOwner(creatorAddr);
+          if (creator) {
+            const creatorId = creator.data?.objectId;
+            newCreators.set(creatorAddr, creator);
+
+            if (account && creatorId) {
+              const sub = await getSubscription(creatorId, account.address);
+              if (sub) {
+                newSubscriptions.set(creatorId, sub);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`Failed to fetch creator ${creatorAddr}:`, e);
+        }
+      }
+
+      setCreators(newCreators);
+      setSubscriptions(newSubscriptions);
+
+      // Check access status for each content if user is connected
+      // 如果用戶已連接，檢查每個內容的訪問狀態
+      const contentsWithStatus: ContentItem[] = await Promise.all(
         allContents.map(async (content: any) => {
           let purchased = false;
+          let hasAccess = false;
+
           if (account) {
             purchased = await hasUserPurchased(
+              content.contentId,
+              account.address
+            );
+            hasAccess = await hasContentAccess(
               content.contentId,
               account.address
             );
@@ -91,7 +156,11 @@ export default function FanDashboard() {
             blobId: blobId,
             price: BigInt(content.price || 0),
             creator: content.creator || "",
+            creatorId: content.creatorId || "",
+            allowlistId: content.allowlistId || "",
+            sealSuffix: content.sealSuffix || [],
             purchased,
+            hasAccess,
           };
         })
       );
@@ -99,7 +168,7 @@ export default function FanDashboard() {
       // Contents are already sorted by event timestamp (newest first)
       // 內容已按事件時間戳排序（最新的在前）
 
-      setContents(contentsWithPurchaseStatus);
+      setContents(contentsWithStatus);
     } catch (err) {
       console.error("Error loading contents:", err);
       setError(
@@ -159,7 +228,57 @@ export default function FanDashboard() {
     }
   };
 
-  const handleViewContent = async (blobId: string) => {
+  const handleSubscribe = async (creatorAddr: string, creatorId: string) => {
+    if (!account) {
+      setError("Please connect your wallet first / 請先連接您的錢包");
+      return;
+    }
+
+    setSubscribing(creatorId);
+    setError(null);
+
+    try {
+      const creator = creators.get(creatorAddr);
+      const subscriptionPrice = BigInt(
+        (creator?.data?.content?.fields as any)?.subscription_price || 0
+      );
+
+      const tx = await subscribeCreatorTransaction(
+        creatorId,
+        subscriptionPrice
+      );
+
+      signAndExecute(
+        { transaction: tx as any },
+        {
+          onSuccess: async () => {
+            await loadAllContents();
+            setSubscribing(null);
+            alert("Subscription successful! / 訂閱成功！");
+          },
+          onError: (error) => {
+            setError(error.message || "Subscription failed / 訂閱失敗");
+            setSubscribing(null);
+          },
+        }
+      );
+    } catch (err) {
+      console.error("Subscribe error:", err);
+      setError(
+        err instanceof Error ? err.message : "Subscription failed / 訂閱失敗"
+      );
+      setSubscribing(null);
+    }
+  };
+
+  const handleViewContent = async (
+    contentId: string,
+    blobId: string,
+    creatorAddr: string,
+    sealSuffix: number[],
+    creatorId: string,
+    allowlistId: string
+  ) => {
     if (!account) {
       setError("Please connect your wallet first / 請先連接您的錢包");
       return;
@@ -169,12 +288,74 @@ export default function FanDashboard() {
     setError(null);
 
     try {
+      // Fetch encrypted blob from Walrus
+      // 從 Walrus 獲取加密的 blob
       const walrusClient = createWalrusClient();
-      const fileBytes = await readFileFromWalrus(walrusClient, blobId, network);
+      const encryptedBytes = await readFileFromWalrus(
+        walrusClient,
+        blobId,
+        network
+      );
+
+      // Get or create session key for Seal
+      // 獲取或創建 Seal 的 session key
+      const signer: PersonalMessageSigner = async (message) => {
+        return new Promise<string>((resolve, reject) => {
+          signAndExecute(
+            {
+              transaction: { kind: "PersonalMessage", message } as any,
+            },
+            {
+              onSuccess: (result: any) => {
+                resolve(result.signature || "");
+              },
+              onError: (error) => {
+                reject(error);
+              },
+            }
+          );
+        });
+      };
+
+      const sessionKey = await getOrCreateSessionKey(account.address, signer);
+
+      // Find or create a dummy subscription ID if user doesn't have one
+      // 如果用戶沒有訂閱，則查找或創建虛擬訂閱 ID
+      let subscriptionId =
+        "0x0000000000000000000000000000000000000000000000000000000000000000";
+      if (creatorId) {
+        const sub = await getSubscription(creatorId, account.address);
+        if (sub?.data?.objectId) {
+          subscriptionId = sub.data.objectId;
+        }
+      }
+
+      // Build seal_approve transaction
+      // 構建 seal_approve 交易
+      const sealIdHex = encodeSealIdentityFromAddress(creatorAddr, sealSuffix);
+      const sealIdBytes = new Uint8Array(
+        sealIdHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+      );
+
+      const txBytes = await buildSealApproveTransaction(
+        sealIdBytes,
+        creatorId,
+        contentId,
+        allowlistId,
+        subscriptionId
+      );
+
+      // Decrypt with Seal SDK
+      // 使用 Seal SDK 解密
+      const decryptedBytes = await decryptWithSeal({
+        encryptedData: encryptedBytes,
+        sessionKey,
+        txBytes,
+      });
 
       // Create object URL for display
       // 創建用於顯示的對象 URL
-      const blob = new Blob([new Uint8Array(fileBytes)]);
+      const blob = new Blob([new Uint8Array(decryptedBytes)]);
       const url = URL.createObjectURL(blob);
       setContentUrl(url);
       setViewingContent(blobId);
@@ -327,12 +508,78 @@ export default function FanDashboard() {
                 Price: {Number(content.price) / 1e9} SUI
                 <br />
                 Creator: <code>{content.creator}</code>
+                <br />
+                {(() => {
+                  const creator = creators.get(content.creator);
+                  const creatorId = creator?.data?.objectId;
+                  const subscriptionPrice =
+                    Number(
+                      (creator?.data?.content?.fields as any)
+                        ?.subscription_price || 0
+                    ) / 1e9;
+                  const isSubscribed =
+                    creatorId && subscriptions.has(creatorId);
+
+                  return (
+                    <>
+                      Creator Subscription: {subscriptionPrice} SUI{" "}
+                      {isSubscribed && " (✓ Subscribed / 已訂閱)"}
+                    </>
+                  );
+                })()}
               </p>
 
-              {content.purchased ? (
+              {/* Subscription Button */}
+              {(() => {
+                const creator = creators.get(content.creator);
+                const creatorId = creator?.data?.objectId;
+                const isSubscribed = creatorId && subscriptions.has(creatorId);
+
+                if (!isSubscribed && creatorId && !content.hasAccess) {
+                  return (
+                    <button
+                      onClick={() =>
+                        handleSubscribe(content.creator, creatorId)
+                      }
+                      disabled={!account || subscribing === creatorId}
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "0.9em",
+                        backgroundColor:
+                          subscribing === creatorId ? "#ccc" : "#9C27B0",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor:
+                          !account || subscribing === creatorId
+                            ? "not-allowed"
+                            : "pointer",
+                        marginBottom: "10px",
+                        marginRight: "10px",
+                      }}
+                    >
+                      {subscribing === creatorId
+                        ? "Subscribing... / 訂閱中..."
+                        : "Subscribe to Creator / 訂閱創作者"}
+                    </button>
+                  );
+                }
+                return null;
+              })()}
+
+              {content.hasAccess ? (
                 <div>
                   <button
-                    onClick={() => handleViewContent(content.blobId)}
+                    onClick={() =>
+                      handleViewContent(
+                        content.contentId,
+                        content.blobId,
+                        content.creator,
+                        content.sealSuffix,
+                        content.creatorId,
+                        content.allowlistId
+                      )
+                    }
                     disabled={loading}
                     style={{
                       padding: "8px 16px",
@@ -348,6 +595,17 @@ export default function FanDashboard() {
                       ? "Loading... / 載入中..."
                       : "View Content / 查看內容"}
                   </button>
+                  {content.purchased && (
+                    <span style={{ fontSize: "0.9em", color: "#4CAF50" }}>
+                      ✓ Purchased / 已購買
+                    </span>
+                  )}
+                  {!content.purchased &&
+                    subscriptions.has(content.creatorId) && (
+                      <span style={{ fontSize: "0.9em", color: "#9C27B0" }}>
+                        ✓ Access via Subscription / 通過訂閱訪問
+                      </span>
+                    )}
                 </div>
               ) : (
                 <button

@@ -21,6 +21,37 @@ export function getContractPackageId(): string {
 }
 
 /**
+ * Build seal_approve transaction for content decryption
+ * 構建用於內容解密的 seal_approve 交易
+ */
+export async function buildSealApproveTransaction(
+  sealIdBytes: Uint8Array,
+  creatorId: string,
+  contentId: string,
+  allowlistId: string,
+  subscriptionId: string
+): Promise<Uint8Array> {
+  const tx = new Transaction();
+
+  // Import SUI_CLOCK_OBJECT_ID
+  const SUI_CLOCK_OBJECT_ID = "0x6";
+
+  tx.moveCall({
+    target: `${CONTRACT_PACKAGE_ID}::seal_access::seal_approve`,
+    arguments: [
+      tx.pure.vector("u8", Array.from(sealIdBytes)),
+      tx.object(creatorId),
+      tx.object(contentId),
+      tx.object(allowlistId),
+      tx.object(subscriptionId),
+      tx.object(SUI_CLOCK_OBJECT_ID),
+    ],
+  });
+
+  return await tx.build({ client: suiClient });
+}
+
+/**
  * Create content on-chain
  * 在鏈上創建內容
  */
