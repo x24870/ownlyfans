@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 import { getPurchaseEvents } from "../utils/contract";
-import { suiClient } from "../utils/suiClient";
 
 interface RevenueStats {
   totalClicks: number;

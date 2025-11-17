@@ -1,4 +1,5 @@
 import { Transaction } from "@mysten/sui/transactions";
+import { SUI_CLOCK_OBJECT_ID } from "@mysten/sui/utils";
 import { suiClient } from "./suiClient";
 
 /**
@@ -23,19 +24,76 @@ export function getContractPackageId(): string {
  * Create content on-chain
  * 在鏈上創建內容
  */
-export function createContentTransaction(
-  blobId: string,
-  price: bigint,
-  referralSplitRatio: number
+export function registerCreatorTransaction(
+  subscriptionPrice: bigint
 ): Transaction {
   const tx = new Transaction();
+  tx.moveCall({
+    target: `${CONTRACT_PACKAGE_ID}::creator_registry::register_creator`,
+    arguments: [tx.pure.u64(subscriptionPrice)],
+  });
+  return tx;
+}
 
-  // Convert blobId string to vector<u8>
+export function subscribeCreatorTransaction(
+  creatorId: string,
+  subscriptionPrice: bigint
+): Transaction {
+  const tx = new Transaction();
+  const [paymentCoin] = tx.splitCoins(tx.gas, [subscriptionPrice]);
+  tx.moveCall({
+    target: `${CONTRACT_PACKAGE_ID}::subscription::subscribe_creator`,
+    arguments: [
+      tx.object(creatorId),
+      paymentCoin,
+      tx.object(SUI_CLOCK_OBJECT_ID),
+    ],
+  });
+  return tx;
+}
+
+/**
+ * Create content on-chain
+ * 在鏈上創建內容
+ */
+interface CreateContentParams {
+  creatorId?: string;
+  creatorAddress?: string;
+  blobId: string;
+  price: bigint;
+  referralSplitRatio: number;
+}
+
+export async function createContentTransaction({
+  creatorId,
+  creatorAddress,
+  blobId,
+  price,
+  referralSplitRatio,
+}: CreateContentParams): Promise<Transaction> {
+  const resolvedCreatorId =
+    creatorId ||
+    (creatorAddress
+      ? await (async () => {
+          const creator = await getCreatorByOwner(creatorAddress);
+          if (!creator?.data?.objectId) {
+            throw new Error("Creator object not found. Please register first.");
+          }
+          return creator.data.objectId;
+        })()
+      : null);
+
+  if (!resolvedCreatorId) {
+    throw new Error("creatorId or creatorAddress is required.");
+  }
+
+  const tx = new Transaction();
   const blobIdBytes = new TextEncoder().encode(blobId);
 
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::content_registry::create_content_entry`,
     arguments: [
+      tx.object(resolvedCreatorId),
       tx.pure.vector("u8", Array.from(blobIdBytes)),
       tx.pure.u64(price),
       tx.pure.u64(referralSplitRatio),
@@ -49,24 +107,41 @@ export function createContentTransaction(
  * Purchase content with optional referral
  * 購買內容（可選推廣地址）
  */
-export function purchaseContentTransaction(
-  contentId: string,
-  price: bigint,
-  referralAddress: string | null
-): Transaction {
-  const tx = new Transaction();
+interface PurchaseContentParams {
+  contentId: string;
+  allowlistId?: string;
+  price: bigint;
+  referralAddress: string | null;
+}
 
+export async function purchaseContentTransaction({
+  contentId,
+  allowlistId,
+  price,
+  referralAddress,
+}: PurchaseContentParams): Promise<Transaction> {
+  const tx = new Transaction();
   const referral = referralAddress || "0x0";
 
-  // Split payment coin from gas coin
-  // 從 gas coin 中 split 出支付金額
+  const resolvedAllowlistId =
+    allowlistId ||
+    (await (async () => {
+      const contentInfo = await getContentInfo(contentId);
+      const fields = (contentInfo.data?.content as any)?.fields;
+      if (!fields?.allowlist_id) {
+        throw new Error("Allowlist ID not found for this content.");
+      }
+      return fields.allowlist_id;
+    })());
+
   const [paymentCoin] = tx.splitCoins(tx.gas, [price]);
 
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::referral_split::purchase_content`,
     arguments: [
-      tx.object(contentId), // Content is now a shared object, anyone can access
-      paymentCoin, // Use split coin instead of gas coin
+      tx.object(contentId),
+      tx.object(resolvedAllowlistId),
+      paymentCoin,
       tx.pure.address(referral),
     ],
   });
@@ -84,6 +159,7 @@ export async function getContentInfo(contentId: string) {
       id: contentId,
       options: {
         showContent: true,
+        showOwner: true,
         showType: true,
       },
     });
@@ -92,6 +168,146 @@ export async function getContentInfo(contentId: string) {
   } catch (error) {
     console.error("Error fetching content:", error);
     throw error;
+  }
+}
+
+export async function getCreatorInfo(creatorId: string) {
+  try {
+    return await suiClient.getObject({
+      id: creatorId,
+      options: {
+        showContent: true,
+        showOwner: true,
+        showType: true,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching creator:", error);
+    throw error;
+  }
+}
+
+export async function getCreatorByOwner(ownerAddress: string) {
+  try {
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveModule: {
+          package: CONTRACT_PACKAGE_ID,
+          module: "creator_registry",
+        },
+      },
+      limit: 200,
+      order: "descending",
+    });
+
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (parsedJson?.owner === ownerAddress && parsedJson?.creator_id) {
+        return await getCreatorInfo(parsedJson.creator_id);
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error fetching creator by owner:", error);
+    return null;
+  }
+}
+
+export async function getAllowlistInfo(allowlistId: string) {
+  try {
+    return await suiClient.getObject({
+      id: allowlistId,
+      options: {
+        showContent: true,
+        showType: true,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching allowlist:", error);
+    throw error;
+  }
+}
+
+export async function getSubscription(
+  creatorId: string,
+  subscriberAddress: string
+) {
+  try {
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveModule: {
+          package: CONTRACT_PACKAGE_ID,
+          module: "subscription",
+        },
+      },
+      limit: 200,
+      order: "descending",
+    });
+
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (
+        parsedJson?.creator_id === creatorId &&
+        parsedJson?.subscriber === subscriberAddress
+      ) {
+        return await suiClient.getObject({
+          id: parsedJson.subscription_id,
+          options: {
+            showContent: true,
+            showType: true,
+          },
+        });
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error fetching subscription:", error);
+    return null;
+  }
+}
+
+export async function hasContentAccess(contentId: string, userAddress: string) {
+  try {
+    const content = await getContentInfo(contentId);
+    const fields = (content.data?.content as any)?.fields;
+    if (!fields) {
+      return false;
+    }
+
+    const allowlistId = fields.allowlist_id;
+    const creatorId = fields.creator_id;
+
+    if (allowlistId) {
+      const allowlist = await getAllowlistInfo(allowlistId);
+      const allowlistFields = (allowlist.data?.content as any)?.fields;
+      if (
+        Array.isArray(allowlistFields?.buyers) &&
+        allowlistFields.buyers.some(
+          (buyer: string) => buyer.toLowerCase() === userAddress.toLowerCase()
+        )
+      ) {
+        return true;
+      }
+    }
+
+    if (creatorId) {
+      const subscription = await getSubscription(creatorId, userAddress);
+      const subscriptionFields = (subscription?.data?.content as any)?.fields;
+      if (subscriptionFields) {
+        const expiresAt = Number(subscriptionFields.expires_at_ms ?? 0);
+        const now = Date.now();
+        if (expiresAt === 0 || expiresAt > now) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error("Error checking content access:", error);
+    return false;
   }
 }
 

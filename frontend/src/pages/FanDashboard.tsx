@@ -122,7 +122,11 @@ export default function FanDashboard() {
     setError(null);
 
     try {
-      const tx = purchaseContentTransaction(contentId, price, referralAddress);
+      const tx = await purchaseContentTransaction({
+        contentId,
+        price,
+        referralAddress,
+      });
 
       signAndExecute(
         {

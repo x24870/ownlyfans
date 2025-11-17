@@ -172,11 +172,12 @@ export default function CreatorDashboard() {
       const priceInMist = BigInt(Math.floor(parseFloat(price) * 1e9)); // Convert SUI to MIST
       const ratioInBasisPoints = ratio * 100; // Convert percentage to basis points
 
-      const tx = createContentTransaction(
-        walrusResult.blobId,
-        priceInMist,
-        ratioInBasisPoints
-      );
+      const tx = await createContentTransaction({
+        creatorAddress: account.address,
+        blobId: walrusResult.blobId,
+        price: priceInMist,
+        referralSplitRatio: ratioInBasisPoints,
+      });
 
       signAndExecute(
         {
