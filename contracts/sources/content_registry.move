@@ -16,6 +16,7 @@ public struct Content has key {
     allowlist_id: ID,                  // Reference to Allowlist object
     seal_suffix: vector<u8>,          // Seal identity suffix (deterministic)
     created_at: u64,                  // Timestamp
+    sold_count: u64,                  // Number of times this content has been sold
 }
 
 /// Event emitted when content is created
@@ -29,6 +30,7 @@ public struct ContentCreated has copy, drop {
     creator_id: ID,
     allowlist_id: ID,
     seal_suffix: vector<u8>,
+    sold_count: u64,
 }
 
 /// Get content information
@@ -63,6 +65,16 @@ public fun get_allowlist_id(content: &Content): ID {
 
 public fun get_seal_suffix(content: &Content): vector<u8> {
     content.seal_suffix
+}
+
+public fun get_sold_count(content: &Content): u64 {
+    content.sold_count
+}
+
+/// Increment sold count (callable by other modules in the same package)
+/// 增加銷售計數（可由同一包中的其他模組調用）
+public(package) fun increment_sold_count(content: &mut Content) {
+    content.sold_count = content.sold_count + 1;
 }
 
 /// Create new content with Seal integration
@@ -101,6 +113,7 @@ public fun create_content_with_seal(
         allowlist_id,
         seal_suffix,
         created_at: sui::tx_context::epoch_timestamp_ms(ctx),
+        sold_count: 0,
     };
     
     // Emit event
@@ -114,6 +127,7 @@ public fun create_content_with_seal(
         creator_id,
         allowlist_id,
         seal_suffix,
+        sold_count: 0,
     });
 
     (content, allowlist)

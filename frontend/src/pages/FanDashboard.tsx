@@ -16,6 +16,8 @@ import {
   getCreatorByOwner,
   buildSealApproveTransaction,
   getContentInfo,
+  getFanTokenAccount,
+  burnFanTokenTransaction,
 } from "../utils/contract";
 import {
   decryptWithSeal,
@@ -49,6 +51,9 @@ export default function FanDashboard() {
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [viewingContent, setViewingContent] = useState<string | null>(null);
   const [contentUrl, setContentUrl] = useState<string | null>(null);
+  const [fanTokens, setFanTokens] = useState<Map<string, any>>(new Map());
+  const [burning, setBurning] = useState<string | null>(null);
+  const [burnAmount, setBurnAmount] = useState<string>("");
 
   // Track subscriptions by creator ID
   // 按創作者 ID 跟踪訂閱
@@ -92,6 +97,7 @@ export default function FanDashboard() {
       // 獲取創作者信息和訂閱
       const newCreators = new Map();
       const newSubscriptions = new Map();
+      const newFanTokens = new Map();
 
       for (const creatorAddr of uniqueCreators) {
         try {
@@ -105,6 +111,15 @@ export default function FanDashboard() {
               if (sub) {
                 newSubscriptions.set(creatorId, sub);
               }
+
+              // Fetch Fan Token Account
+              const fanToken = await getFanTokenAccount(
+                creatorAddr,
+                account.address
+              );
+              if (fanToken) {
+                newFanTokens.set(creatorAddr, fanToken);
+              }
             }
           }
         } catch (e) {
@@ -114,6 +129,7 @@ export default function FanDashboard() {
 
       setCreators(newCreators);
       setSubscriptions(newSubscriptions);
+      setFanTokens(newFanTokens);
 
       // Check access status for each content if user is connected
       // 如果用戶已連接，檢查每個內容的訪問狀態
@@ -234,6 +250,7 @@ export default function FanDashboard() {
         contentId,
         price,
         referralAddress,
+        userAddress: account.address,
       });
 
       signAndExecute(
@@ -308,6 +325,36 @@ export default function FanDashboard() {
         err instanceof Error ? err.message : "Subscription failed / 訂閱失敗"
       );
       setSubscribing(null);
+    }
+  };
+
+  const handleBurn = async (_creatorAddr: string, accountId: string) => {
+    if (!burnAmount || isNaN(Number(burnAmount)) || Number(burnAmount) <= 0) {
+      alert("Please enter a valid amount / 請輸入有效金額");
+      return;
+    }
+
+    setBurning(accountId);
+    try {
+      const tx = await burnFanTokenTransaction(accountId, BigInt(burnAmount));
+      signAndExecute(
+        { transaction: tx as any },
+        {
+          onSuccess: async () => {
+            await loadAllContents();
+            setBurning(null);
+            setBurnAmount("");
+            alert("Burn successful! / 銷毀成功！");
+          },
+          onError: (error) => {
+            setError(error.message || "Burn failed / 銷毀失敗");
+            setBurning(null);
+          },
+        }
+      );
+    } catch (err) {
+      console.error("Burn error:", err);
+      setBurning(null);
     }
   };
 
@@ -586,10 +633,69 @@ export default function FanDashboard() {
                   const isSubscribed =
                     creatorId && subscriptions.has(creatorId);
 
+                  // Fan Token Info
+                  const fanTokenInfo = fanTokens.get(content.creator);
+                  const fanTokenFields = fanTokenInfo?.content?.fields;
+
                   return (
                     <>
                       Creator Subscription: {subscriptionPrice} SUI{" "}
                       {isSubscribed && " (✓ Subscribed / 已訂閱)"}
+                      <br />
+                      {fanTokenInfo ? (
+                        <div
+                          style={{
+                            marginTop: "8px",
+                            padding: "8px",
+                            backgroundColor: "#e8f5e9",
+                            borderRadius: "4px",
+                            fontSize: "0.9em",
+                          }}
+                        >
+                          <strong>Fan Tokens:</strong> {fanTokenFields?.balance}
+                          <span style={{ marginLeft: "10px", color: "#666" }}>
+                            (Burned: {fanTokenFields?.total_burned})
+                          </span>
+                          <div style={{ marginTop: "5px" }}>
+                            <input
+                              type="number"
+                              placeholder="Amount to burn"
+                              value={burnAmount}
+                              onChange={(e) => setBurnAmount(e.target.value)}
+                              style={{
+                                width: "80px",
+                                padding: "2px",
+                                marginRight: "5px",
+                              }}
+                            />
+                            <button
+                              onClick={() =>
+                                handleBurn(
+                                  content.creator,
+                                  fanTokenInfo.objectId
+                                )
+                              }
+                              disabled={burning === fanTokenInfo.objectId}
+                              style={{
+                                padding: "2px 8px",
+                                backgroundColor: "#ff9800",
+                                color: "white",
+                                border: "none",
+                                borderRadius: "2px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              {burning === fanTokenInfo.objectId
+                                ? "Burning..."
+                                : "Burn"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: "0.8em", color: "#888" }}>
+                          (Fan Token account will be created on first purchase)
+                        </span>
+                      )}
                     </>
                   );
                 })()}

@@ -10,7 +10,7 @@ import { suiClient } from "./suiClient";
 // Contract package ID (will be set after deployment)
 // 合約包 ID（部署後設定）
 let CONTRACT_PACKAGE_ID =
-  "0x8631a85ec446d61f63160e8a1b51b26b071971996669139c8751d26513ce2e44";
+  "0xc1e4ed35534f7185384f4fa05387576b30dd6f3567334616d1fbcc5210def63a";
 
 export function setContractPackageId(packageId: string) {
   CONTRACT_PACKAGE_ID = packageId;
@@ -18,6 +18,58 @@ export function setContractPackageId(packageId: string) {
 
 export function getContractPackageId(): string {
   return CONTRACT_PACKAGE_ID;
+}
+
+/**
+ * Get Fan Token Account for a specific creator and user
+ * 獲取特定創作者和用戶的 Fan Token 帳戶
+ */
+export async function getFanTokenAccount(
+  creatorAddress: string,
+  userAddress: string
+) {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return null;
+    }
+
+    const objects = await suiClient.getOwnedObjects({
+      owner: userAddress,
+      filter: {
+        StructType: `${CONTRACT_PACKAGE_ID}::fan_token::FanTokenAccount`,
+      },
+      options: {
+        showContent: true,
+      },
+    });
+
+    // Find account for this creator
+    const account = objects.data.find((obj) => {
+      const content = obj.data?.content as any;
+      return content?.fields?.creator === creatorAddress;
+    });
+
+    return account?.data;
+  } catch (error) {
+    console.error("Error fetching fan token account:", error);
+    return null;
+  }
+}
+
+/**
+ * Burn Fan Tokens
+ * 銷毀 Fan Token
+ */
+export async function burnFanTokenTransaction(
+  accountId: string,
+  amount: bigint
+): Promise<Transaction> {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${CONTRACT_PACKAGE_ID}::fan_token::burn_token`,
+    arguments: [tx.object(accountId), tx.pure.u64(amount)],
+  });
+  return tx;
 }
 
 /**
@@ -125,24 +177,57 @@ export function registerCreatorTransaction(
   return tx;
 }
 
-export function subscribeCreatorTransaction(
+export async function subscribeCreatorTransaction(
   creatorId: string,
   subscriptionPrice: bigint,
   sender?: string
-): Transaction {
+): Promise<Transaction> {
   const tx = new Transaction();
   if (sender) {
     tx.setSender(sender);
+  } else {
+    throw new Error("Sender address required for subscription");
   }
+
+  // Get creator owner address
+  const creatorInfo = await getCreatorInfo(creatorId);
+  const creatorOwner = (creatorInfo.data?.content as any)?.fields?.owner;
+
+  if (!creatorOwner) {
+    throw new Error("Creator owner not found");
+  }
+
+  // Check for existing FanTokenAccount
+  const existingAccount = await getFanTokenAccount(creatorOwner, sender);
+  let fanTokenAccountArg;
+  let isNewAccount = false;
+
+  if (existingAccount) {
+    fanTokenAccountArg = tx.object(existingAccount.objectId);
+  } else {
+    const [newAccount] = tx.moveCall({
+      target: `${CONTRACT_PACKAGE_ID}::fan_token::create_account`,
+      arguments: [tx.pure.address(creatorOwner)],
+    });
+    fanTokenAccountArg = newAccount;
+    isNewAccount = true;
+  }
+
   const [paymentCoin] = tx.splitCoins(tx.gas, [subscriptionPrice]);
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::subscription::subscribe_creator`,
     arguments: [
       tx.object(creatorId),
+      fanTokenAccountArg,
       paymentCoin,
       tx.object(SUI_CLOCK_OBJECT_ID),
     ],
   });
+
+  if (isNewAccount) {
+    tx.transferObjects([fanTokenAccountArg], tx.pure.address(sender));
+  }
+
   return tx;
 }
 
@@ -206,6 +291,7 @@ interface PurchaseContentParams {
   allowlistId?: string;
   price: bigint;
   referralAddress: string | null;
+  userAddress: string; // Added userAddress
 }
 
 export async function purchaseContentTransaction({
@@ -213,20 +299,45 @@ export async function purchaseContentTransaction({
   allowlistId,
   price,
   referralAddress,
+  userAddress,
 }: PurchaseContentParams): Promise<Transaction> {
   const tx = new Transaction();
   const referral = referralAddress || "0x0";
 
-  const resolvedAllowlistId =
-    allowlistId ||
-    (await (async () => {
-      const contentInfo = await getContentInfo(contentId);
-      const fields = (contentInfo.data?.content as any)?.fields;
-      if (!fields?.allowlist_id) {
-        throw new Error("Allowlist ID not found for this content.");
-      }
-      return fields.allowlist_id;
-    })());
+  // Fetch content info to get allowlistId and creatorAddress
+  const contentInfo = await getContentInfo(contentId);
+  const contentFields = (contentInfo.data?.content as any)?.fields;
+
+  if (!contentFields) {
+    throw new Error("Content info not found.");
+  }
+
+  const resolvedAllowlistId = allowlistId || contentFields.allowlist_id;
+  const creatorAddress = contentFields.creator;
+
+  if (!resolvedAllowlistId) {
+    throw new Error("Allowlist ID not found for this content.");
+  }
+  if (!creatorAddress) {
+    throw new Error("Creator address not found for this content.");
+  }
+
+  // Check for existing FanTokenAccount
+  const existingAccount = await getFanTokenAccount(creatorAddress, userAddress);
+  let fanTokenAccountArg;
+  let isNewAccount = false;
+
+  if (existingAccount) {
+    fanTokenAccountArg = tx.object(existingAccount.objectId);
+  } else {
+    // Create new account
+    const [newAccount] = tx.moveCall({
+      target: `${CONTRACT_PACKAGE_ID}::fan_token::create_account`,
+      arguments: [tx.pure.address(creatorAddress)],
+    });
+    fanTokenAccountArg = newAccount;
+    isNewAccount = true;
+  }
 
   const [paymentCoin] = tx.splitCoins(tx.gas, [price]);
 
@@ -235,10 +346,16 @@ export async function purchaseContentTransaction({
     arguments: [
       tx.object(contentId),
       tx.object(resolvedAllowlistId),
+      fanTokenAccountArg,
       paymentCoin,
       tx.pure.address(referral),
     ],
   });
+
+  // If we created a new account, transfer it to user
+  if (isNewAccount) {
+    tx.transferObjects([fanTokenAccountArg], tx.pure.address(userAddress));
+  }
 
   return tx;
 }

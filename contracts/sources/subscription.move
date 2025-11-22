@@ -5,6 +5,7 @@ use sui::sui::SUI;
 use sui::clock::Clock;
 use sui::event;
 use ownlyfans::creator_registry::{Self, Creator};
+use ownlyfans::fan_token::{Self, FanTokenAccount};
 
 /// Subscription to a creator's all content
 /// 訂閱創作者的所有內容
@@ -33,6 +34,7 @@ const E_INSUFFICIENT_PAYMENT: u64 = 1;
 /// 訂閱創作者
 public entry fun subscribe_creator(
     creator: &Creator,
+    fan_token_account: &mut FanTokenAccount,
     payment: Coin<SUI>,
     clock: &Clock,
     ctx: &mut TxContext
@@ -41,6 +43,10 @@ public entry fun subscribe_creator(
     let creator_id = creator_registry::get_creator_id(creator);
     let subscription_price = creator_registry::get_subscription_price(creator);
     let creator_owner = creator_registry::get_owner(creator);
+    
+    // Verify fan_token_account belongs to subscriber and matches creator
+    assert!(fan_token::get_user(fan_token_account) == subscriber, 2);
+    assert!(fan_token::get_creator(fan_token_account) == creator_owner, 3);
     
     // Verify payment amount
     // 驗證付款金額
@@ -55,12 +61,25 @@ public entry fun subscribe_creator(
     // 創建訂閱（測試用 5 分鐘）
     let current_time = clock.timestamp_ms();
     let five_minutes_ms = 5 * 60 * 1000; // 5 minutes in milliseconds
+    let expires_at_ms = current_time + five_minutes_ms;
+    
+    // Update streak and calculate reward
+    // 更新連續訂閱次數並計算獎勵
+    let streak = fan_token::update_streak_for_subscription(
+        fan_token_account,
+        current_time,
+        expires_at_ms
+    );
+    
+    let reward = fan_token::calculate_subscription_reward(payment_amount, streak);
+    fan_token::add_reward(fan_token_account, reward);
+    
     let subscription = Subscription {
         id: sui::object::new(ctx),
         creator_id,
         subscriber,
         created_at_ms: current_time,
-        expires_at_ms: current_time + five_minutes_ms, // 5 minutes for testing
+        expires_at_ms, // 5 minutes for testing
     };
     
     let subscription_id = sui::object::id(&subscription);

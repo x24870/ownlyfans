@@ -6,6 +6,7 @@ use sui::sui::SUI;
 use sui::event;
 use ownlyfans::content_registry::{Self, Content};
 use ownlyfans::allowlist::{Self, Allowlist};
+use ownlyfans::fan_token::{Self, FanTokenAccount};
 
 /// Event emitted when content is purchased
 /// 購買內容時發出的事件
@@ -21,13 +22,18 @@ public struct ContentPurchased has copy, drop {
 /// Purchase content with optional referral address
 /// 購買內容（可選推廣地址）
 public entry fun purchase_content(
-    content: &Content,
+    content: &mut Content,
     allowlist: &mut Allowlist,
+    fan_token_account: &mut FanTokenAccount,
     payment: Coin<SUI>,
     referral_address: address,
     ctx: &mut TxContext
 ) {
     let buyer = sui::tx_context::sender(ctx);
+
+    // Verify fan_token_account belongs to buyer and matches creator
+    assert!(fan_token::get_user(fan_token_account) == buyer, 2);
+    assert!(fan_token::get_creator(fan_token_account) == content_registry::get_creator(content), 3);
 
     let price = content_registry::get_price(content);
     let referral_split_ratio = content_registry::get_referral_split_ratio(content);
@@ -47,6 +53,16 @@ public entry fun purchase_content(
     // Verify payment amount
     // 驗證付款金額
     assert!(payment_amount >= price, 1);
+
+    // Calculate and add Fan Token reward
+    // 計算並添加 Fan Token 獎勵
+    let sold_count = content_registry::get_sold_count(content);
+    let reward = fan_token::calculate_content_reward(payment_amount, sold_count);
+    fan_token::add_reward(fan_token_account, reward);
+    
+    // Increment sold count
+    // 增加銷售計數
+    content_registry::increment_sold_count(content);
 
     // Calculate split amounts
     // 計算分配金額
