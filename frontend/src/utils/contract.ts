@@ -127,9 +127,13 @@ export function registerCreatorTransaction(
 
 export function subscribeCreatorTransaction(
   creatorId: string,
-  subscriptionPrice: bigint
+  subscriptionPrice: bigint,
+  sender?: string
 ): Transaction {
   const tx = new Transaction();
+  if (sender) {
+    tx.setSender(sender);
+  }
   const [paymentCoin] = tx.splitCoins(tx.gas, [subscriptionPrice]);
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::subscription::subscribe_creator`,

@@ -284,7 +284,8 @@ export default function FanDashboard() {
 
       const tx = await subscribeCreatorTransaction(
         creatorId,
-        subscriptionPrice
+        subscriptionPrice,
+        account.address
       );
 
       signAndExecute(
