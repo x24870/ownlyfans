@@ -10,7 +10,7 @@ import { suiClient } from "./suiClient";
 // Contract package ID (will be set after deployment)
 // 合約包 ID（部署後設定）
 let CONTRACT_PACKAGE_ID =
-  "0xb75271ece8112bf58ea15c87d785b38c4d2530fe374fd150991e384cd1f2746e";
+  "0x8631a85ec446d61f63160e8a1b51b26b071971996669139c8751d26513ce2e44";
 
 export function setContractPackageId(packageId: string) {
   CONTRACT_PACKAGE_ID = packageId;
@@ -29,26 +29,85 @@ export async function buildSealApproveTransaction(
   creatorId: string,
   contentId: string,
   allowlistId: string,
-  subscriptionId: string
+  subscriptionId: string | null,
+  sender: string
 ): Promise<Uint8Array> {
+  // Fetch content object to get creatorId and allowlistId if not provided
+  // 如果未提供，獲取內容對象以獲取 creatorId 和 allowlistId
+  let resolvedCreatorId = creatorId;
+  let resolvedAllowlistId = allowlistId;
+
+  if (!resolvedCreatorId || !resolvedAllowlistId) {
+    const contentInfo = await getContentInfo(contentId);
+    const fields = (contentInfo.data?.content as any)?.fields;
+
+    if (!resolvedCreatorId && fields?.creator_id) {
+      resolvedCreatorId = fields.creator_id;
+    }
+
+    if (!resolvedAllowlistId && fields?.allowlist_id) {
+      resolvedAllowlistId = fields.allowlist_id;
+    }
+  }
+
+  // Validate that we have all required IDs
+  // 驗證我們擁有所有必需的 ID
+  if (!resolvedCreatorId) {
+    throw new Error(
+      "Creator ID is required but not found / 需要創作者 ID 但未找到"
+    );
+  }
+  if (!resolvedAllowlistId) {
+    throw new Error(
+      "Allowlist ID is required but not found / 需要允許列表 ID 但未找到"
+    );
+  }
+
   const tx = new Transaction();
+
+  // Set the sender address (required for building the transaction)
+  // 設置發送者地址（構建交易時必需）
+  tx.setSender(sender);
 
   // Import SUI_CLOCK_OBJECT_ID
   const SUI_CLOCK_OBJECT_ID = "0x6";
 
-  tx.moveCall({
-    target: `${CONTRACT_PACKAGE_ID}::seal_access::seal_approve`,
-    arguments: [
-      tx.pure.vector("u8", Array.from(sealIdBytes)),
-      tx.object(creatorId),
-      tx.object(contentId),
-      tx.object(allowlistId),
-      tx.object(subscriptionId),
-      tx.object(SUI_CLOCK_OBJECT_ID),
-    ],
-  });
+  // Use different function based on whether subscription exists
+  // 根據是否存在訂閱使用不同的函數
+  if (
+    subscriptionId &&
+    subscriptionId !==
+      "0x0000000000000000000000000000000000000000000000000000000000000000"
+  ) {
+    // User has subscription - use seal_approve_with_subscription
+    // 用戶有訂閱 - 使用 seal_approve_with_subscription
+    tx.moveCall({
+      target: `${CONTRACT_PACKAGE_ID}::seal_access::seal_approve_with_subscription`,
+      arguments: [
+        tx.pure.vector("u8", Array.from(sealIdBytes)),
+        tx.object(resolvedCreatorId),
+        tx.object(contentId),
+        tx.object(resolvedAllowlistId),
+        tx.object(subscriptionId),
+        tx.object(SUI_CLOCK_OBJECT_ID),
+      ],
+    });
+  } else {
+    // User has no subscription - use seal_approve (without subscription)
+    // 用戶沒有訂閱 - 使用 seal_approve（無訂閱）
+    tx.moveCall({
+      target: `${CONTRACT_PACKAGE_ID}::seal_access::seal_approve`,
+      arguments: [
+        tx.pure.vector("u8", Array.from(sealIdBytes)),
+        tx.object(resolvedCreatorId),
+        tx.object(contentId),
+        tx.object(resolvedAllowlistId),
+        tx.object(SUI_CLOCK_OBJECT_ID),
+      ],
+    });
+  }
 
-  return await tx.build({ client: suiClient });
+  return await tx.build({ client: suiClient, onlyTransactionKind: true });
 }
 
 /**

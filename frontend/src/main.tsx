@@ -45,7 +45,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         defaultNetwork={network}
       >
         <WalletProvider>
-          <App />
+    <App />
         </WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>

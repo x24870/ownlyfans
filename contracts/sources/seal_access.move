@@ -2,6 +2,7 @@ module ownlyfans::seal_access;
 
 use sui::event;
 use sui::clock::Clock;
+use sui::object::ID;
 use ownlyfans::content_registry::{Self, Content};
 use ownlyfans::creator_registry::{Self, Creator};
 use ownlyfans::allowlist::{Self, Allowlist};
@@ -69,14 +70,57 @@ fun check_subscription_access(
     subscription::is_valid_subscription(subscription, creator_id, caller, clock)
 }
 
-/// Seal access policy - called by Seal key servers during decrypt
-/// Seal 訪問策略 - 在解密期間由 Seal 密鑰服務器調用
-/// 
-/// This function is called in a dry-run transaction by Seal key servers.
-/// If it aborts, access is denied. If it succeeds, access is granted.
-/// 此函數在 Seal 密鑰服務器的試運行交易中調用。
-/// 如果它中止，則拒絕訪問。如果成功，則授予訪問權限。
+/// Seal access policy without subscription - called by Seal key servers during decrypt
+/// Seal 訪問策略（無訂閱）- 在解密期間由 Seal 密鑰服務器調用
 public entry fun seal_approve(
+    id: vector<u8>,
+    creator: &Creator,
+    content: &Content,
+    allowlist: &Allowlist,
+    clock: &Clock,
+    ctx: &TxContext
+) {
+    let caller = sui::tx_context::sender(ctx);
+    let creator_owner = creator_registry::get_owner(creator);
+    
+    // Step 1: Verify Seal ID matches this content
+    // 步驟 1：驗證 Seal ID 與此內容匹配
+    assert!(verify_id_matches(&id, creator, content), E_INVALID_SEAL_ID);
+    
+    // Step 2: Check access - creator always has access, OR allowlist (no subscription)
+    // 步驟 2：檢查訪問權限 - 創作者始終擁有訪問權限，或允許列表（無訂閱）
+    let is_creator = caller == creator_owner;
+    let has_allowlist_access = check_allowlist_access(caller, allowlist);
+    
+    let approved = is_creator || has_allowlist_access;
+    
+    // Determine access type for event
+    // 確定事件的訪問類型
+    let access_type = if (is_creator) {
+        b"creator"
+    } else if (has_allowlist_access) {
+        b"allowlist"
+    } else {
+        b"none"
+    };
+    
+    // Emit access approval event (even if denied, for auditing)
+    // 發出訪問批准事件（即使被拒絕，用於審計）
+    event::emit(SealAccessApproved {
+        content_id: content_registry::get_content_id(content),
+        requester: caller,
+        approved,
+        access_type,
+    });
+    
+    // Assert access is granted - this causes the transaction to abort if access is denied
+    // 斷言訪問已授予 - 如果訪問被拒絕，這將導致交易中止
+    assert!(approved, E_NO_ACCESS);
+}
+
+/// Seal access policy with subscription - called by Seal key servers during decrypt
+/// Seal 訪問策略（有訂閱）- 在解密期間由 Seal 密鑰服務器調用
+public entry fun seal_approve_with_subscription(
     id: vector<u8>,
     creator: &Creator,
     content: &Content,

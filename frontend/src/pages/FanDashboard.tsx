@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   useCurrentAccount,
   useSignAndExecuteTransaction,
+  useWallets,
 } from "@mysten/dapp-kit";
 import { readFileFromWalrus, createWalrusClient } from "../utils/walrusHelpers";
 import { network } from "../utils/suiClient";
@@ -14,6 +15,7 @@ import {
   getSubscription,
   getCreatorByOwner,
   buildSealApproveTransaction,
+  getContentInfo,
 } from "../utils/contract";
 import {
   decryptWithSeal,
@@ -37,6 +39,7 @@ interface ContentItem {
 export default function FanDashboard() {
   const account = useCurrentAccount();
   const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+  const wallets = useWallets();
 
   const [contents, setContents] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,6 +133,42 @@ export default function FanDashboard() {
             );
           }
 
+          // Fetch content object to get creatorId, allowlistId, and sealSuffix
+          // 獲取內容對象以獲取 creatorId、allowlistId 和 sealSuffix
+          let creatorId = content.creatorId || "";
+          let allowlistId = content.allowlistId || "";
+          let sealSuffix: number[] = content.sealSuffix || [];
+
+          if (!creatorId || !allowlistId || sealSuffix.length === 0) {
+            try {
+              const contentInfo = await getContentInfo(content.contentId);
+              const fields = (contentInfo.data?.content as any)?.fields;
+
+              if (!creatorId && fields?.creator_id) {
+                creatorId = fields.creator_id;
+              }
+
+              if (!allowlistId && fields?.allowlist_id) {
+                allowlistId = fields.allowlist_id;
+              }
+
+              if (sealSuffix.length === 0 && fields?.seal_suffix) {
+                // Convert seal_suffix to number array
+                // 將 seal_suffix 轉換為數字數組
+                if (Array.isArray(fields.seal_suffix)) {
+                  sealSuffix = fields.seal_suffix;
+                } else if (fields.seal_suffix?.bytes) {
+                  sealSuffix = Array.from(fields.seal_suffix.bytes);
+                }
+              }
+            } catch (e) {
+              console.warn(
+                `Failed to fetch content object ${content.contentId}:`,
+                e
+              );
+            }
+          }
+
           // Decode blob_id
           let blobId = "";
           if (content.blobId) {
@@ -156,9 +195,9 @@ export default function FanDashboard() {
             blobId: blobId,
             price: BigInt(content.price || 0),
             creator: content.creator || "",
-            creatorId: content.creatorId || "",
-            allowlistId: content.allowlistId || "",
-            sealSuffix: content.sealSuffix || [],
+            creatorId,
+            allowlistId,
+            sealSuffix,
             purchased,
             hasAccess,
           };
@@ -300,29 +339,54 @@ export default function FanDashboard() {
       // Get or create session key for Seal
       // 獲取或創建 Seal 的 session key
       const signer: PersonalMessageSigner = async (message) => {
-        return new Promise<string>((resolve, reject) => {
-          signAndExecute(
-            {
-              transaction: { kind: "PersonalMessage", message } as any,
-            },
-            {
-              onSuccess: (result: any) => {
-                resolve(result.signature || "");
-              },
-              onError: (error) => {
-                reject(error);
-              },
-            }
+        try {
+          // Get the connected wallet
+          // 獲取已連接的錢包
+          const connectedWallet = wallets.find((w) =>
+            w.accounts.some((a) => a.address === account?.address)
           );
-        });
+
+          if (!connectedWallet || !account) {
+            throw new Error("Wallet not connected / 錢包未連接");
+          }
+
+          // Sign personal message using wallet's signPersonalMessage method
+          // 使用錢包的 signPersonalMessage 方法簽署個人訊息
+          const walletAccount = connectedWallet.accounts.find(
+            (a) => a.address === account.address
+          );
+
+          if (!walletAccount) {
+            throw new Error("Account not found in wallet / 錢包中找不到帳戶");
+          }
+
+          const result = await connectedWallet.features[
+            "sui:signPersonalMessage"
+          ]?.signPersonalMessage({
+            message: new Uint8Array(message),
+            account: walletAccount,
+          });
+
+          if (!result || !result.signature) {
+            throw new Error(
+              "Failed to sign personal message / 簽署個人訊息失敗"
+            );
+          }
+
+          // Return signature in base64 format (Seal SDK expects this)
+          // 返回 base64 格式的簽名（Seal SDK 需要此格式）
+          return result.signature;
+        } catch (error) {
+          console.error("Error signing personal message:", error);
+          throw error;
+        }
       };
 
       const sessionKey = await getOrCreateSessionKey(account.address, signer);
 
-      // Find or create a dummy subscription ID if user doesn't have one
-      // 如果用戶沒有訂閱，則查找或創建虛擬訂閱 ID
-      let subscriptionId =
-        "0x0000000000000000000000000000000000000000000000000000000000000000";
+      // Find subscription ID if user has one
+      // 如果用戶有訂閱，查找訂閱 ID
+      let subscriptionId: string | null = null;
       if (creatorId) {
         const sub = await getSubscription(creatorId, account.address);
         if (sub?.data?.objectId) {
@@ -342,7 +406,8 @@ export default function FanDashboard() {
         creatorId,
         contentId,
         allowlistId,
-        subscriptionId
+        subscriptionId,
+        account.address
       );
 
       // Decrypt with Seal SDK
