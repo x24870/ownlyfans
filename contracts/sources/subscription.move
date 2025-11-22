@@ -1,6 +1,7 @@
 module ownlyfans::subscription;
 
 use sui::coin::{Self, Coin};
+use sui::balance;
 use sui::sui::SUI;
 use sui::clock::Clock;
 use sui::event;
@@ -24,11 +25,18 @@ public struct SubscriptionCreated has copy, drop {
     creator_id: ID,
     subscriber: address,
     price: u64,
+    referral_address: address,
+    referral_share: u64,
+    creator_share: u64,
 }
 
 /// Error codes
 /// 錯誤代碼
 const E_INSUFFICIENT_PAYMENT: u64 = 1;
+
+/// Default referral split ratio for subscriptions (15% = 1500 basis points)
+/// 訂閱的默認推廣分成比例（15% = 1500 基點）
+const DEFAULT_SUBSCRIPTION_REFERRAL_RATIO: u64 = 1500;
 
 /// Subscribe to a creator
 /// 訂閱創作者
@@ -36,6 +44,7 @@ public entry fun subscribe_creator(
     creator: &Creator,
     fan_token_account: &mut FanTokenAccount,
     payment: Coin<SUI>,
+    referral_address: address,
     clock: &Clock,
     ctx: &mut TxContext
 ) {
@@ -53,9 +62,46 @@ public entry fun subscribe_creator(
     let payment_amount = coin::value(&payment);
     assert!(payment_amount >= subscription_price, E_INSUFFICIENT_PAYMENT);
     
-    // Transfer payment to creator
-    // 將付款轉給創作者
-    transfer::public_transfer(payment, creator_owner);
+    // Convert Coin to Balance for splitting
+    // 將 Coin 轉換為 Balance 以便分割
+    let mut payment_balance = coin::into_balance(payment);
+    
+    // Calculate split amounts
+    // 計算分配金額
+    // Anti-self-referral: If subscriber is the referral or creator is the referral, no referral reward
+    // 防自推廣：如果訂閱者是推廣者或創作者是推廣者，則無推廣獎勵
+    let referral_share = if (referral_address == @0x0) {
+        // No referral, all goes to creator
+        // 無推廣，全部歸創作者
+        0
+    } else if (subscriber == referral_address || creator_owner == referral_address) {
+        // Anti-self-referral: No referral reward for self-referral
+        // 防自推廣：自推廣無推廣獎勵
+        0
+    } else {
+        (payment_amount * DEFAULT_SUBSCRIPTION_REFERRAL_RATIO) / 10000
+    };
+    let creator_share = payment_amount - referral_share;
+    
+    // Split payment
+    // 分配付款
+    if (referral_share > 0) {
+        let referral_balance = balance::split(&mut payment_balance, referral_share);
+        let referral_coin = coin::from_balance(referral_balance, ctx);
+        transfer::public_transfer(referral_coin, referral_address);
+    };
+    
+    // Send remaining to creator
+    // 將剩餘部分發送給創作者
+    if (creator_share > 0) {
+        let creator_coin = coin::from_balance(payment_balance, ctx);
+        transfer::public_transfer(creator_coin, creator_owner);
+    } else {
+        // If no creator share, return to subscriber
+        // 如果沒有創作者份額，返回給訂閱者
+        let return_coin = coin::from_balance(payment_balance, ctx);
+        transfer::public_transfer(return_coin, subscriber);
+    };
     
     // Create subscription (5 minutes for testing)
     // 創建訂閱（測試用 5 分鐘）
@@ -91,6 +137,9 @@ public entry fun subscribe_creator(
         creator_id,
         subscriber,
         price: subscription_price,
+        referral_address,
+        referral_share,
+        creator_share,
     });
     
     // Make subscription a shared object so it can be used in seal_approve

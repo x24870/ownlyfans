@@ -10,7 +10,7 @@ import { suiClient } from "./suiClient";
 // Contract package ID (will be set after deployment)
 // 合約包 ID（部署後設定）
 let CONTRACT_PACKAGE_ID =
-  "0xd306cf7b1a980309365b282ae94c6233f7b2dbabba37552e4bb2b61c3f7557b4";
+  "0x80655078fe831291c08ad1e428ef4d585fe3775db9b04b915a3ca196321102b3";
 
 export function setContractPackageId(packageId: string) {
   CONTRACT_PACKAGE_ID = packageId;
@@ -303,7 +303,8 @@ export function registerCreatorTransaction(
 export async function subscribeCreatorTransaction(
   creatorId: string,
   subscriptionPrice: bigint,
-  sender?: string
+  sender?: string,
+  referralAddress?: string | null
 ): Promise<Transaction> {
   const tx = new Transaction();
   if (sender) {
@@ -337,12 +338,17 @@ export async function subscribeCreatorTransaction(
   }
 
   const [paymentCoin] = tx.splitCoins(tx.gas, [subscriptionPrice]);
+
+  // Use referral address from parameter or default to 0x0
+  const referral = referralAddress || "0x0";
+
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::subscription::subscribe_creator`,
     arguments: [
       tx.object(creatorId),
       fanTokenAccountArg,
       paymentCoin,
+      tx.pure.address(referral),
       tx.object(SUI_CLOCK_OBJECT_ID),
     ],
   });
