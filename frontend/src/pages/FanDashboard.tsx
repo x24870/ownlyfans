@@ -17,7 +17,9 @@ import {
   buildSealApproveTransaction,
   getContentInfo,
   getFanTokenAccount,
-  burnFanTokenTransaction,
+  getCreatorCampaigns,
+  joinCampaignTransaction,
+  hasJoinedCampaign,
 } from "../utils/contract";
 import {
   decryptWithSeal,
@@ -52,8 +54,8 @@ export default function FanDashboard() {
   const [viewingContent, setViewingContent] = useState<string | null>(null);
   const [contentUrl, setContentUrl] = useState<string | null>(null);
   const [fanTokens, setFanTokens] = useState<Map<string, any>>(new Map());
-  const [burning, setBurning] = useState<string | null>(null);
-  const [burnAmount, setBurnAmount] = useState<string>("");
+  const [campaigns, setCampaigns] = useState<Map<string, any[]>>(new Map());
+  const [joiningCampaign, setJoiningCampaign] = useState<string | null>(null);
 
   // Track subscriptions by creator ID
   // 按創作者 ID 跟踪訂閱
@@ -98,6 +100,7 @@ export default function FanDashboard() {
       const newCreators = new Map();
       const newSubscriptions = new Map();
       const newFanTokens = new Map();
+      const newCampaigns = new Map();
 
       for (const creatorAddr of uniqueCreators) {
         try {
@@ -105,6 +108,22 @@ export default function FanDashboard() {
           if (creator) {
             const creatorId = creator.data?.objectId;
             newCreators.set(creatorAddr, creator);
+
+            // Load Campaigns
+            const creatorCampaigns: any[] = await getCreatorCampaigns(
+              creatorAddr
+            );
+            // Check joined status for each campaign
+            if (account) {
+              for (const campaign of creatorCampaigns) {
+                const joined = await hasJoinedCampaign(
+                  campaign.objectId,
+                  account.address
+                );
+                campaign.joined = joined;
+              }
+            }
+            newCampaigns.set(creatorAddr, creatorCampaigns);
 
             if (account && creatorId) {
               const sub = await getSubscription(creatorId, account.address);
@@ -130,6 +149,7 @@ export default function FanDashboard() {
       setCreators(newCreators);
       setSubscriptions(newSubscriptions);
       setFanTokens(newFanTokens);
+      setCampaigns(newCampaigns);
 
       // Check access status for each content if user is connected
       // 如果用戶已連接，檢查每個內容的訪問狀態
@@ -328,33 +348,36 @@ export default function FanDashboard() {
     }
   };
 
-  const handleBurn = async (_creatorAddr: string, accountId: string) => {
-    if (!burnAmount || isNaN(Number(burnAmount)) || Number(burnAmount) <= 0) {
-      alert("Please enter a valid amount / 請輸入有效金額");
-      return;
-    }
+  const handleJoinCampaign = async (
+    campaignId: string,
+    fanTokenAccountId: string,
+    _cost: number
+  ) => {
+    if (!account) return;
 
-    setBurning(accountId);
+    // Check balance locally first (though contract will check too)
+    // ...
+
+    setJoiningCampaign(campaignId);
     try {
-      const tx = await burnFanTokenTransaction(accountId, BigInt(burnAmount));
+      const tx = joinCampaignTransaction(campaignId, fanTokenAccountId);
       signAndExecute(
         { transaction: tx as any },
         {
           onSuccess: async () => {
             await loadAllContents();
-            setBurning(null);
-            setBurnAmount("");
-            alert("Burn successful! / 銷毀成功！");
+            setJoiningCampaign(null);
+            alert("Joined campaign successfully! / 參加活動成功！");
           },
           onError: (error) => {
-            setError(error.message || "Burn failed / 銷毀失敗");
-            setBurning(null);
+            setError(error.message || "Failed to join campaign / 參加活動失敗");
+            setJoiningCampaign(null);
           },
         }
       );
     } catch (err) {
-      console.error("Burn error:", err);
-      setBurning(null);
+      console.error("Join campaign error:", err);
+      setJoiningCampaign(null);
     }
   };
 
@@ -637,6 +660,9 @@ export default function FanDashboard() {
                   const fanTokenInfo = fanTokens.get(content.creator);
                   const fanTokenFields = fanTokenInfo?.content?.fields;
 
+                  // Campaign Info
+                  const creatorCampaigns = campaigns.get(content.creator) || [];
+
                   return (
                     <>
                       Creator Subscription: {subscriptionPrice} SUI{" "}
@@ -656,40 +682,120 @@ export default function FanDashboard() {
                           <span style={{ marginLeft: "10px", color: "#666" }}>
                             (Burned: {fanTokenFields?.total_burned})
                           </span>
-                          <div style={{ marginTop: "5px" }}>
-                            <input
-                              type="number"
-                              placeholder="Amount to burn"
-                              value={burnAmount}
-                              onChange={(e) => setBurnAmount(e.target.value)}
+                          {/* Campaign List */}
+                          {creatorCampaigns.length > 0 && (
+                            <div
                               style={{
-                                width: "80px",
-                                padding: "2px",
-                                marginRight: "5px",
-                              }}
-                            />
-                            <button
-                              onClick={() =>
-                                handleBurn(
-                                  content.creator,
-                                  fanTokenInfo.objectId
-                                )
-                              }
-                              disabled={burning === fanTokenInfo.objectId}
-                              style={{
-                                padding: "2px 8px",
-                                backgroundColor: "#ff9800",
-                                color: "white",
-                                border: "none",
-                                borderRadius: "2px",
-                                cursor: "pointer",
+                                marginTop: "10px",
+                                borderTop: "1px solid #ccc",
+                                paddingTop: "5px",
                               }}
                             >
-                              {burning === fanTokenInfo.objectId
-                                ? "Burning..."
-                                : "Burn"}
-                            </button>
-                          </div>
+                              <strong>Active Campaigns / 進行中的活動:</strong>
+                              {creatorCampaigns.map(
+                                (camp: any, idx: number) => {
+                                  const fields = camp.content?.fields;
+                                  if (!fields?.active) return null;
+
+                                  const joined = camp.joined; // We attached this in loadAllContents
+                                  const cost = Number(fields.cost);
+                                  const canJoin =
+                                    Number(fanTokenFields?.balance) >= cost;
+
+                                  return (
+                                    <div
+                                      key={idx}
+                                      style={{
+                                        background: "white",
+                                        padding: "8px",
+                                        marginTop: "5px",
+                                        borderRadius: "4px",
+                                        border: "1px solid #ddd",
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          fontWeight: "bold",
+                                          color: "#333",
+                                        }}
+                                      >
+                                        {fields.title}
+                                      </div>
+                                      <div
+                                        style={{
+                                          fontSize: "0.9em",
+                                          color: "#555",
+                                          marginBottom: "5px",
+                                        }}
+                                      >
+                                        {fields.description}
+                                      </div>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          justifyContent: "space-between",
+                                          alignItems: "center",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#d32f2f",
+                                            fontWeight: "bold",
+                                            fontSize: "0.9em",
+                                          }}
+                                        >
+                                          Cost: {cost} Fan Tokens
+                                        </span>
+                                        {joined ? (
+                                          <span
+                                            style={{
+                                              color: "green",
+                                              fontWeight: "bold",
+                                              fontSize: "0.9em",
+                                            }}
+                                          >
+                                            ✓ Joined / 已參加
+                                          </span>
+                                        ) : (
+                                          <button
+                                            onClick={() =>
+                                              handleJoinCampaign(
+                                                camp.objectId,
+                                                fanTokenInfo.objectId,
+                                                cost
+                                              )
+                                            }
+                                            disabled={
+                                              joiningCampaign ===
+                                                camp.objectId || !canJoin
+                                            }
+                                            style={{
+                                              padding: "4px 12px",
+                                              fontSize: "0.8em",
+                                              backgroundColor: canJoin
+                                                ? "#9C27B0"
+                                                : "#e0e0e0",
+                                              color: canJoin ? "white" : "#999",
+                                              border: "none",
+                                              borderRadius: "4px",
+                                              cursor: canJoin
+                                                ? "pointer"
+                                                : "not-allowed",
+                                            }}
+                                          >
+                                            {joiningCampaign ===
+                                            camp.data?.objectId
+                                              ? "Joining..."
+                                              : "Join Campaign"}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                              )}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <span style={{ fontSize: "0.8em", color: "#888" }}>

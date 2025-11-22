@@ -10,6 +10,8 @@ import {
   getCreatedObjectsFromTransaction,
   registerCreatorTransaction,
   getCreatorByOwner,
+  createCampaignTransaction,
+  getCreatorCampaigns,
 } from "../utils/contract";
 import {
   encryptWithSeal,
@@ -38,6 +40,14 @@ export default function CreatorDashboard() {
   const [contents, setContents] = useState<Content[]>([]);
   const [loadingContents, setLoadingContents] = useState(false);
 
+  // Campaign state
+  const [campaignTitle, setCampaignTitle] = useState("");
+  const [campaignDesc, setCampaignDesc] = useState("");
+  const [campaignCost, setCampaignCost] = useState("");
+  const [creatingCampaign, setCreatingCampaign] = useState(false);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+
   // Creator registration state
   // 創作者註冊狀態
   const [creatorInfo, setCreatorInfo] = useState<any>(null);
@@ -51,8 +61,10 @@ export default function CreatorDashboard() {
     if (account) {
       loadCreatorInfo();
       loadCreatorContents();
+      loadCampaigns();
     } else {
       setContents([]);
+      setCampaigns([]);
       setCreatorInfo(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,6 +134,19 @@ export default function CreatorDashboard() {
       setError("Failed to load contents / 載入內容失敗");
     } finally {
       setLoadingContents(false);
+    }
+  };
+
+  const loadCampaigns = async () => {
+    if (!account) return;
+    setLoadingCampaigns(true);
+    try {
+      const creatorCampaigns = await getCreatorCampaigns(account.address);
+      setCampaigns(creatorCampaigns);
+    } catch (error) {
+      console.error("Error loading campaigns:", error);
+    } finally {
+      setLoadingCampaigns(false);
     }
   };
 
@@ -337,6 +362,58 @@ export default function CreatorDashboard() {
     }
   };
 
+  const handleCreateCampaign = async () => {
+    if (!campaignTitle || !campaignDesc || !campaignCost) {
+      setError("Please fill in all campaign fields / 請填寫所有活動欄位");
+      return;
+    }
+
+    const cost = parseInt(campaignCost);
+    if (isNaN(cost) || cost <= 0) {
+      setError("Please enter a valid cost / 請輸入有效的消耗代幣數量");
+      return;
+    }
+
+    setCreatingCampaign(true);
+    setError(null);
+
+    try {
+      const tx = createCampaignTransaction(
+        campaignTitle,
+        campaignDesc,
+        BigInt(cost)
+      );
+
+      signAndExecute(
+        { transaction: tx as any },
+        {
+          onSuccess: async () => {
+            setCampaignTitle("");
+            setCampaignDesc("");
+            setCampaignCost("");
+            setCreatingCampaign(false);
+            await loadCampaigns();
+            alert("Campaign created successfully! / 活動創建成功！");
+          },
+          onError: (error) => {
+            setError(
+              error.message || "Failed to create campaign / 創建活動失敗"
+            );
+            setCreatingCampaign(false);
+          },
+        }
+      );
+    } catch (err) {
+      console.error("Error creating campaign:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to create campaign / 創建活動失敗"
+      );
+      setCreatingCampaign(false);
+    }
+  };
+
   return (
     <div>
       <h2>Creator Dashboard / 創作者儀表板</h2>
@@ -526,6 +603,121 @@ export default function CreatorDashboard() {
             }}
           >
             <strong>Error / 錯誤:</strong> {error}
+          </div>
+        )}
+      </div>
+
+      {/* Create Campaign Section */}
+      <div
+        style={{
+          padding: "20px",
+          border: "1px solid #ccc",
+          borderRadius: "8px",
+          marginBottom: "20px",
+          opacity: !creatorInfo ? 0.5 : 1,
+          pointerEvents: !creatorInfo ? "none" : "auto",
+        }}
+      >
+        <h3>Create Campaign / 創建活動</h3>
+
+        <div style={{ marginBottom: "15px" }}>
+          <label>
+            Title / 標題:
+            <input
+              type="text"
+              value={campaignTitle}
+              onChange={(e) => setCampaignTitle(e.target.value)}
+              disabled={creatingCampaign}
+              style={{ marginLeft: "10px", width: "300px" }}
+              placeholder="Campaign Title"
+            />
+          </label>
+        </div>
+
+        <div style={{ marginBottom: "15px" }}>
+          <label>
+            Description / 描述:
+            <input
+              type="text"
+              value={campaignDesc}
+              onChange={(e) => setCampaignDesc(e.target.value)}
+              disabled={creatingCampaign}
+              style={{ marginLeft: "10px", width: "300px" }}
+              placeholder="Campaign Description"
+            />
+          </label>
+        </div>
+
+        <div style={{ marginBottom: "15px" }}>
+          <label>
+            Cost (Fan Tokens) / 消耗 (Fan Tokens):
+            <input
+              type="number"
+              value={campaignCost}
+              onChange={(e) => setCampaignCost(e.target.value)}
+              disabled={creatingCampaign}
+              style={{ marginLeft: "10px", width: "150px" }}
+              placeholder="100"
+            />
+          </label>
+        </div>
+
+        <button
+          onClick={handleCreateCampaign}
+          disabled={creatingCampaign}
+          style={{
+            padding: "10px 20px",
+            fontSize: "16px",
+            backgroundColor: creatingCampaign ? "#ccc" : "#9C27B0",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: creatingCampaign ? "not-allowed" : "pointer",
+          }}
+        >
+          {creatingCampaign
+            ? "Creating... / 創建中..."
+            : "Create Campaign / 創建活動"}
+        </button>
+
+        {/* Campaign List */}
+        {campaigns.length > 0 && (
+          <div style={{ marginTop: "20px" }}>
+            <h4>Your Campaigns / 您的活動</h4>
+            {loadingCampaigns ? (
+              <p style={{ color: "#666" }}>
+                Loading campaigns... / 載入活動中...
+              </p>
+            ) : (
+              campaigns.map((campaign, index) => {
+                const fields =
+                  campaign.content?.fields || campaign.data?.content?.fields;
+                return (
+                  <div
+                    key={index}
+                    style={{
+                      padding: "10px",
+                      background: "#f9f9f9",
+                      border: "1px solid #eee",
+                      marginBottom: "10px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    <strong>{fields?.title}</strong>
+                    <br />
+                    <span style={{ fontSize: "0.9em", color: "#666" }}>
+                      {fields?.description}
+                    </span>
+                    <br />
+                    <span style={{ fontSize: "0.9em", color: "#666" }}>
+                      Cost: {fields?.cost} tokens | Participants:{" "}
+                      {fields?.participants?.length || 0} | Status:{" "}
+                      {fields?.active ? "Active" : "Closed"}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
       </div>

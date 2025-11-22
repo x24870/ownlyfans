@@ -10,7 +10,7 @@ import { suiClient } from "./suiClient";
 // Contract package ID (will be set after deployment)
 // 合約包 ID（部署後設定）
 let CONTRACT_PACKAGE_ID =
-  "0xc1e4ed35534f7185384f4fa05387576b30dd6f3567334616d1fbcc5210def63a";
+  "0xd306cf7b1a980309365b282ae94c6233f7b2dbabba37552e4bb2b61c3f7557b4";
 
 export function setContractPackageId(packageId: string) {
   CONTRACT_PACKAGE_ID = packageId;
@@ -70,6 +70,129 @@ export async function burnFanTokenTransaction(
     arguments: [tx.object(accountId), tx.pure.u64(amount)],
   });
   return tx;
+}
+
+/**
+ * Create a new Creator Campaign
+ * 創建新的創作者活動
+ */
+export function createCampaignTransaction(
+  title: string,
+  description: string,
+  cost: bigint
+): Transaction {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${CONTRACT_PACKAGE_ID}::campaign::create_campaign`,
+    arguments: [
+      tx.pure.string(title),
+      tx.pure.string(description),
+      tx.pure.u64(cost),
+    ],
+  });
+  return tx;
+}
+
+/**
+ * Join a Creator Campaign
+ * 參加創作者活動
+ */
+export function joinCampaignTransaction(
+  campaignId: string,
+  fanTokenAccountId: string
+): Transaction {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${CONTRACT_PACKAGE_ID}::campaign::join_campaign`,
+    arguments: [tx.object(campaignId), tx.object(fanTokenAccountId)],
+  });
+  return tx;
+}
+
+/**
+ * Get campaigns for a creator
+ * 獲取創作者的活動
+ */
+export async function getCreatorCampaigns(creatorAddress: string) {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return [];
+    }
+
+    // Query CampaignCreated events
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveModule: {
+          package: CONTRACT_PACKAGE_ID,
+          module: "campaign",
+        },
+      },
+      limit: 50,
+      order: "descending",
+    });
+
+    const campaigns = [];
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (parsedJson?.creator === creatorAddress && parsedJson?.campaign_id) {
+        try {
+          const obj = await suiClient.getObject({
+            id: parsedJson.campaign_id,
+            options: {
+              showContent: true,
+            },
+          });
+          if (obj.data) {
+            campaigns.push(obj.data);
+          }
+        } catch (e) {
+          console.warn(`Campaign ${parsedJson.campaign_id} not found`, e);
+        }
+      }
+    }
+    return campaigns;
+  } catch (error) {
+    console.error("Error fetching campaigns:", error);
+    return [];
+  }
+}
+
+/**
+ * Check if user has joined a campaign
+ * 檢查用戶是否已參加活動
+ */
+export async function hasJoinedCampaign(
+  campaignId: string,
+  userAddress: string
+): Promise<boolean> {
+  try {
+    if (!CONTRACT_PACKAGE_ID) return false;
+
+    // Query CampaignJoined events
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveModule: {
+          package: CONTRACT_PACKAGE_ID,
+          module: "campaign",
+        },
+      },
+      limit: 100,
+      order: "descending",
+    });
+
+    // Filter for specific campaign and user
+    // Ideally we would query by sender but event query is limited
+    return events.data.some((event) => {
+      const parsedJson = event.parsedJson as any;
+      return (
+        parsedJson?.campaign_id === campaignId &&
+        parsedJson?.user === userAddress
+      );
+    });
+  } catch (error) {
+    console.error("Error checking campaign participation:", error);
+    return false;
+  }
 }
 
 /**

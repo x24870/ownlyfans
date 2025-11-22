@@ -29,8 +29,9 @@ public struct TokenBurned has copy, drop {
 
 /// Constants for reward calculation
 /// 獎勵計算的常數
+const MIST_PER_SUI: u64 = 1_000_000_000;         // 1 SUI = 10^9 MIST
 const MULTIPLIER_SCALE: u64 = 1000;              // Represents 1.0x
-const BASE_RATE_POINTS_PER_SUI: u64 = 10;        // 1 SUI = 10 base tokens
+const BASE_RATE_POINTS_PER_SUI: u64 = 10000;     // 1 SUI = 10,000 base tokens
 const ACTION_MULTIPLIER_CONTENT: u64 = 1000;     // 1.0x for content purchase
 const ACTION_MULTIPLIER_SUB: u64 = 700;           // 0.7x for subscription
 
@@ -115,8 +116,8 @@ public fun calculate_content_reward(
     spend_amount_sui: u64,
     sold_count: u64
 ): u64 {
-    // raw_tokens = spend_amount_sui * BASE_RATE_POINTS_PER_SUI
-    let raw_tokens = spend_amount_sui * BASE_RATE_POINTS_PER_SUI;
+    // raw_tokens = (spend_amount_mist * BASE_RATE_POINTS_PER_SUI) / MIST_PER_SUI
+    let raw_tokens = (spend_amount_sui * BASE_RATE_POINTS_PER_SUI) / MIST_PER_SUI;
     
     // Determine bonus multiplier based on sold_count
     // 根據 sold_count 確定獎勵倍數
@@ -141,8 +142,8 @@ public fun calculate_subscription_reward(
     spend_amount_sui: u64,
     streak: u64
 ): u64 {
-    // raw_tokens = spend_amount_sui * BASE_RATE_POINTS_PER_SUI
-    let raw_tokens = spend_amount_sui * BASE_RATE_POINTS_PER_SUI;
+    // raw_tokens = (spend_amount_mist * BASE_RATE_POINTS_PER_SUI) / MIST_PER_SUI
+    let raw_tokens = (spend_amount_sui * BASE_RATE_POINTS_PER_SUI) / MIST_PER_SUI;
     
     // Determine loyalty bonus multiplier based on streak
     // 根據連續訂閱次數確定忠誠度獎勵倍數
@@ -222,17 +223,19 @@ public fun calculate_streak(
     }
 }
 
-/// Burn tokens from account
-/// 從帳戶銷毀代幣
-public entry fun burn_token(
+/// Burn tokens from account (public version)
+/// 從帳戶銷毀代幣（公開版本）
+public fun burn_token_internal(
     account: &mut FanTokenAccount,
     amount: u64,
     ctx: &TxContext
 ) {
-    // Verify caller is the account owner
-    // 驗證調用者是帳戶擁有者
-    let caller = sui::tx_context::sender(ctx);
-    assert!(caller == account.user, 2);
+    // Verify caller is the account owner (or authorized module)
+    // Note: In Move, we can't easily verify caller in public functions called by other modules
+    // but the FanTokenAccount is an owned object, so only the owner can pass a mutable reference
+    // to a transaction entry function.
+    // 注意：在 Move 中，我們無法輕易驗證其他模組調用的公開函數中的調用者
+    // 但 FanTokenAccount 是一個擁有的對象，因此只有擁有者可以將可變引用傳遞給交易入口函數。
     
     // Verify sufficient balance
     // 驗證餘額充足
@@ -253,5 +256,20 @@ public entry fun burn_token(
         new_balance: account.balance,
         new_total_burned: account.total_burned,
     });
+}
+
+/// Burn tokens from account
+/// 從帳戶銷毀代幣
+public entry fun burn_token(
+    account: &mut FanTokenAccount,
+    amount: u64,
+    ctx: &TxContext
+) {
+    // Verify caller is the account owner
+    // 驗證調用者是帳戶擁有者
+    let caller = sui::tx_context::sender(ctx);
+    assert!(caller == account.user, 2);
+    
+    burn_token_internal(account, amount, ctx);
 }
 
