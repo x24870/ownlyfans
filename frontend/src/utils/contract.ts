@@ -812,6 +812,55 @@ export async function getCreatorContents(
 }
 
 /**
+ * Get all registered creators
+ * 獲取所有已註冊的創作者
+ */
+export async function getAllCreators() {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return [];
+    }
+
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveModule: {
+          package: CONTRACT_PACKAGE_ID,
+          module: "creator_registry",
+        },
+      },
+      limit: 100,
+      order: "descending",
+    });
+
+    const creators = [];
+    const seenCreators = new Set<string>();
+
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (parsedJson?.creator_id && parsedJson?.owner) {
+        const creatorId = parsedJson.creator_id;
+        if (!seenCreators.has(creatorId)) {
+          seenCreators.add(creatorId);
+          try {
+            const creatorObj = await getCreatorInfo(creatorId);
+            if (creatorObj.data) {
+              creators.push(creatorObj.data);
+            }
+          } catch (e) {
+            console.warn(`Creator ${creatorId} not found`, e);
+          }
+        }
+      }
+    }
+
+    return creators;
+  } catch (error) {
+    console.error("Error fetching all creators:", error);
+    return [];
+  }
+}
+
+/**
  * Get created objects from transaction result
  * 從交易結果獲取創建的對象 ID
  */
