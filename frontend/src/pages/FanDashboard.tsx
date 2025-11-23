@@ -481,46 +481,63 @@ export default function FanDashboard() {
 
   return (
     <div>
-      <h2>Fan Dashboard / 粉絲儀表板</h2>
+      <h2
+        style={{
+          color: "#FFFFFF",
+          fontSize: "2em",
+          fontWeight: "700",
+          letterSpacing: "-0.02em",
+          marginBottom: "30px",
+        }}
+      >
+        Fan Dashboard / 粉絲儀表板
+      </h2>
 
       {referralAddress && (
         <div
+          className="glass-card"
           style={{
-            padding: "15px",
-            background: "#e3f2fd",
-            borderRadius: "4px",
             marginBottom: "20px",
+            borderColor: "rgba(52, 208, 248, 0.4)",
           }}
         >
-          <p>
-            <strong>Referral Link Detected / 檢測到推廣連結</strong>
-            <br />
-            Referrer: <code>{referralAddress}</code>
+          <p
+            style={{ margin: "0 0 8px 0", color: "#FFFFFF", fontWeight: "600" }}
+          >
+            Referral Link Detected / 檢測到推廣連結
+          </p>
+          <p style={{ margin: "0", color: "#D0D0D0" }}>
+            Referrer:{" "}
+            <code className="monospace" style={{ color: "#00E0FF" }}>
+              {referralAddress}
+            </code>
           </p>
         </div>
       )}
 
       {/* Referral Link Generator */}
       {account && (
-        <div
-          style={{
-            padding: "20px",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            marginBottom: "20px",
-          }}
-        >
-          <h3>Your Referral Link / 您的推廣連結</h3>
-          <div style={{ marginBottom: "10px" }}>
+        <div className="glass-card" style={{ marginBottom: "20px" }}>
+          <h3
+            style={{ color: "#FFFFFF", marginTop: "0", marginBottom: "15px" }}
+          >
+            Your Referral Link / 您的推廣連結
+          </h3>
+          <div style={{ marginBottom: "15px" }}>
             <input
               type="text"
               value={generateReferralLink()}
               readOnly
+              className="monospace"
               style={{
                 width: "100%",
-                padding: "8px",
+                padding: "12px",
                 fontSize: "0.9em",
-                fontFamily: "monospace",
+                background: "rgba(0, 0, 0, 0.3)",
+                border: "1px solid rgba(52, 208, 248, 0.3)",
+                borderRadius: "8px",
+                color: "#00E0FF",
+                outline: "none",
               }}
             />
           </div>
@@ -529,14 +546,8 @@ export default function FanDashboard() {
               navigator.clipboard.writeText(generateReferralLink());
               alert("Referral link copied! / 推廣連結已複製！");
             }}
-            style={{
-              padding: "8px 16px",
-              backgroundColor: "#2196F3",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
+            className="gradient-button"
+            style={{ padding: "10px 20px" }}
           >
             Copy Link / 複製連結
           </button>
@@ -546,45 +557,41 @@ export default function FanDashboard() {
       {/* Creators List or Creator Content */}
       {!selectedCreator ? (
         /* Creators List View */
-        <div
-          style={{
-            padding: "20px",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-          }}
-        >
+        <div className="glass-card">
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: "15px",
+              marginBottom: "20px",
             }}
           >
-            <h3>Registered Creators / 已註冊創作者</h3>
+            <h3
+              style={{
+                color: "#FFFFFF",
+                margin: "0",
+                fontSize: "1.5em",
+                fontWeight: "700",
+              }}
+            >
+              Registered Creators / 已註冊創作者
+            </h3>
             <button
               onClick={loadAllCreators}
               disabled={loadingCreators}
-              style={{
-                padding: "5px 15px",
-                fontSize: "0.9em",
-                backgroundColor: "#2196F3",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: loadingCreators ? "not-allowed" : "pointer",
-              }}
+              className="gradient-button"
+              style={{ padding: "8px 16px", fontSize: "0.9em" }}
             >
               {loadingCreators ? "Loading... / 載入中..." : "Refresh / 刷新"}
             </button>
           </div>
 
           {loadingCreators && allCreators.length === 0 ? (
-            <p style={{ color: "#666" }}>
+            <p style={{ color: "#D0D0D0" }}>
               Loading creators... / 載入創作者中...
             </p>
           ) : allCreators.length === 0 ? (
-            <p style={{ color: "#666" }}>
+            <p style={{ color: "#D0D0D0" }}>
               No creators registered yet. / 尚無已註冊的創作者。
             </p>
           ) : (
@@ -592,7 +599,7 @@ export default function FanDashboard() {
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-                gap: "15px",
+                gap: "20px",
               }}
             >
               {allCreators.map((creator: any) => {
@@ -607,50 +614,72 @@ export default function FanDashboard() {
                     key={creatorId}
                     onClick={() => handleSelectCreator(owner)}
                     style={{
-                      padding: "20px",
-                      background: "#f5f5f5",
-                      borderRadius: "8px",
-                      border: "2px solid #ddd",
+                      padding: "24px",
+                      background: "rgba(37, 41, 52, 0.8)",
+                      borderRadius: "12px",
+                      border: "1px solid rgba(52, 208, 248, 0.3)",
                       cursor: "pointer",
-                      transition: "all 0.2s",
+                      transition: "all 0.3s ease",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#2196F3";
-                      e.currentTarget.style.background = "#e3f2fd";
+                      e.currentTarget.style.borderColor =
+                        "rgba(52, 208, 248, 0.6)";
+                      e.currentTarget.style.background =
+                        "rgba(52, 208, 248, 0.1)";
+                      e.currentTarget.style.transform = "translateY(-4px)";
+                      e.currentTarget.style.boxShadow =
+                        "0 8px 24px rgba(163, 0, 255, 0.3)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#ddd";
-                      e.currentTarget.style.background = "#f5f5f5";
+                      e.currentTarget.style.borderColor =
+                        "rgba(52, 208, 248, 0.3)";
+                      e.currentTarget.style.background =
+                        "rgba(37, 41, 52, 0.8)";
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow = "none";
                     }}
                   >
-                    <h4 style={{ margin: "0 0 10px 0", color: "#333" }}>
+                    <h4
+                      style={{
+                        margin: "0 0 12px 0",
+                        color: "#FFFFFF",
+                        fontWeight: "600",
+                      }}
+                    >
                       Creator / 創作者
                     </h4>
                     <p
                       style={{
-                        margin: "0 0 8px 0",
+                        margin: "0 0 10px 0",
                         fontSize: "0.9em",
-                        color: "#666",
+                        color: "#D0D0D0",
                         wordBreak: "break-all",
                       }}
                     >
-                      <strong>Owner:</strong> <code>{owner}</code>
+                      <strong style={{ color: "#FFFFFF" }}>Owner:</strong>{" "}
+                      <code className="monospace" style={{ color: "#00E0FF" }}>
+                        {owner}
+                      </code>
                     </p>
                     <p
                       style={{
-                        margin: "0 0 8px 0",
+                        margin: "0 0 10px 0",
                         fontSize: "0.9em",
-                        color: "#666",
+                        color: "#D0D0D0",
                       }}
                     >
-                      <strong>Subscription Price:</strong> {subscriptionPrice}{" "}
-                      SUI
+                      <strong style={{ color: "#FFFFFF" }}>
+                        Subscription Price:
+                      </strong>{" "}
+                      <span className="data-highlight">
+                        {subscriptionPrice} SUI
+                      </span>
                     </p>
                     <p
                       style={{
                         margin: "0",
                         fontSize: "0.85em",
-                        color: "#888",
+                        color: "#34D0F8",
                         fontStyle: "italic",
                       }}
                     >
@@ -664,53 +693,70 @@ export default function FanDashboard() {
         </div>
       ) : (
         /* Creator Content View */
-        <div
-          style={{
-            padding: "20px",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-          }}
-        >
+        <div className="glass-card">
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: "15px",
+              marginBottom: "20px",
+              flexWrap: "wrap",
+              gap: "15px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "15px",
+                flexWrap: "wrap",
+              }}
+            >
               <button
                 onClick={handleBackToCreators}
                 style={{
-                  padding: "8px 16px",
+                  padding: "10px 20px",
                   fontSize: "0.9em",
-                  backgroundColor: "#666",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
+                  background: "rgba(37, 41, 52, 0.8)",
+                  color: "#FFFFFF",
+                  border: "1px solid rgba(52, 208, 248, 0.3)",
+                  borderRadius: "12px",
                   cursor: "pointer",
+                  transition: "all 0.3s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(52, 208, 248, 0.6)";
+                  e.currentTarget.style.background = "rgba(52, 208, 248, 0.1)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(52, 208, 248, 0.3)";
+                  e.currentTarget.style.background = "rgba(37, 41, 52, 0.8)";
                 }}
               >
                 ← Back to Creators / 返回創作者列表
               </button>
-              <h3 style={{ margin: 0 }}>
+              <h3
+                style={{
+                  margin: 0,
+                  color: "#FFFFFF",
+                  fontSize: "1.5em",
+                  fontWeight: "700",
+                }}
+              >
                 Creator Content / 創作者內容:{" "}
-                <code style={{ fontSize: "0.8em" }}>{selectedCreator}</code>
+                <code
+                  className="monospace"
+                  style={{ fontSize: "0.7em", color: "#00E0FF" }}
+                >
+                  {selectedCreator}
+                </code>
               </h3>
             </div>
             <button
               onClick={() => loadCreatorContents(selectedCreator)}
               disabled={loadingCreatorContents}
-              style={{
-                padding: "5px 15px",
-                fontSize: "0.9em",
-                backgroundColor: "#2196F3",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: loadingCreatorContents ? "not-allowed" : "pointer",
-              }}
+              className="gradient-button"
+              style={{ padding: "8px 16px", fontSize: "0.9em" }}
             >
               {loadingCreatorContents
                 ? "Loading... / 載入中..."
@@ -719,9 +765,11 @@ export default function FanDashboard() {
           </div>
 
           {loadingCreatorContents && creatorContents.length === 0 ? (
-            <p style={{ color: "#666" }}>Loading contents... / 載入內容中...</p>
+            <p style={{ color: "#D0D0D0" }}>
+              Loading contents... / 載入內容中...
+            </p>
           ) : creatorContents.length === 0 ? (
-            <p style={{ color: "#666" }}>
+            <p style={{ color: "#D0D0D0" }}>
               No content available from this creator yet. /
               此創作者尚無可用內容。
             </p>
@@ -730,26 +778,41 @@ export default function FanDashboard() {
               <div
                 key={content.contentId}
                 style={{
-                  padding: "15px",
-                  marginBottom: "10px",
-                  background: "#f5f5f5",
-                  borderRadius: "4px",
-                  border: "1px solid #ddd",
+                  padding: "20px",
+                  marginBottom: "15px",
+                  background: "rgba(37, 41, 52, 0.6)",
+                  borderRadius: "12px",
+                  border: "1px solid rgba(52, 208, 248, 0.2)",
                 }}
               >
-                <p style={{ margin: "0 0 10px 0", fontWeight: "bold" }}>
-                  Content ID: <code>{content.contentId}</code>
+                <p
+                  style={{
+                    margin: "0 0 12px 0",
+                    fontWeight: "600",
+                    color: "#FFFFFF",
+                  }}
+                >
+                  Content ID:{" "}
+                  <code className="monospace" style={{ color: "#00E0FF" }}>
+                    {content.contentId}
+                  </code>
                 </p>
                 <p
                   style={{
-                    margin: "0 0 10px 0",
-                    fontSize: "0.9em",
-                    color: "#666",
+                    margin: "0 0 12px 0",
+                    fontSize: "0.95em",
+                    color: "#D0D0D0",
                   }}
                 >
-                  Price: {Number(content.price) / 1e9} SUI
+                  Price:{" "}
+                  <span className="data-highlight">
+                    {Number(content.price) / 1e9} SUI
+                  </span>
                   <br />
-                  Creator: <code>{content.creator}</code>
+                  Creator:{" "}
+                  <code className="monospace" style={{ color: "#00E0FF" }}>
+                    {content.creator}
+                  </code>
                   <br />
                   {(() => {
                     const creator = creators.get(content.creator);
@@ -772,34 +835,56 @@ export default function FanDashboard() {
 
                     return (
                       <>
-                        Creator Subscription: {subscriptionPrice} SUI{" "}
-                        {isSubscribed && " (✓ Subscribed / 已訂閱)"}
+                        Creator Subscription:{" "}
+                        <span className="data-highlight">
+                          {subscriptionPrice} SUI
+                        </span>{" "}
+                        {isSubscribed && (
+                          <span style={{ color: "#34D0F8" }}>
+                            {" "}
+                            (✓ Subscribed / 已訂閱)
+                          </span>
+                        )}
                         <br />
                         {fanTokenInfo ? (
                           <div
                             style={{
-                              marginTop: "8px",
-                              padding: "8px",
-                              backgroundColor: "#e8f5e9",
-                              borderRadius: "4px",
+                              marginTop: "12px",
+                              padding: "16px",
+                              background: "rgba(52, 208, 248, 0.1)",
+                              borderRadius: "12px",
+                              border: "1px solid rgba(52, 208, 248, 0.3)",
                               fontSize: "0.9em",
                             }}
                           >
-                            <strong>Fan Tokens:</strong>{" "}
-                            {fanTokenFields?.balance}
-                            <span style={{ marginLeft: "10px", color: "#666" }}>
-                              (Burned: {fanTokenFields?.total_burned})
+                            <strong style={{ color: "#FFFFFF" }}>
+                              Fan Tokens:
+                            </strong>{" "}
+                            <span className="data-highlight">
+                              {fanTokenFields?.balance}
+                            </span>
+                            <span
+                              style={{ marginLeft: "10px", color: "#D0D0D0" }}
+                            >
+                              (Burned:{" "}
+                              <span
+                                style={{ color: "#FFFFFF", fontWeight: "700" }}
+                              >
+                                {fanTokenFields?.total_burned}
+                              </span>
+                              )
                             </span>
                             {/* Campaign List */}
                             {creatorCampaigns.length > 0 && (
                               <div
                                 style={{
-                                  marginTop: "10px",
-                                  borderTop: "1px solid #ccc",
-                                  paddingTop: "5px",
+                                  marginTop: "15px",
+                                  borderTop:
+                                    "1px solid rgba(52, 208, 248, 0.3)",
+                                  paddingTop: "12px",
                                 }}
                               >
-                                <strong>
+                                <strong style={{ color: "#FFFFFF" }}>
                                   Active Campaigns / 進行中的活動:
                                 </strong>
                                 {creatorCampaigns.map(
@@ -816,17 +901,19 @@ export default function FanDashboard() {
                                       <div
                                         key={idx}
                                         style={{
-                                          background: "white",
-                                          padding: "8px",
-                                          marginTop: "5px",
-                                          borderRadius: "4px",
-                                          border: "1px solid #ddd",
+                                          background: "rgba(37, 41, 52, 0.6)",
+                                          padding: "12px",
+                                          marginTop: "10px",
+                                          borderRadius: "10px",
+                                          border:
+                                            "1px solid rgba(163, 0, 255, 0.3)",
                                         }}
                                       >
                                         <div
                                           style={{
-                                            fontWeight: "bold",
-                                            color: "#333",
+                                            fontWeight: "600",
+                                            color: "#FFFFFF",
+                                            marginBottom: "6px",
                                           }}
                                         >
                                           {fields.title}
@@ -834,8 +921,8 @@ export default function FanDashboard() {
                                         <div
                                           style={{
                                             fontSize: "0.9em",
-                                            color: "#555",
-                                            marginBottom: "5px",
+                                            color: "#D0D0D0",
+                                            marginBottom: "10px",
                                           }}
                                         >
                                           {fields.description}
@@ -848,8 +935,8 @@ export default function FanDashboard() {
                                           }}
                                         >
                                           <span
+                                            className="data-highlight"
                                             style={{
-                                              color: "#d32f2f",
                                               fontWeight: "bold",
                                               fontSize: "0.9em",
                                             }}
@@ -859,7 +946,7 @@ export default function FanDashboard() {
                                           {joined ? (
                                             <span
                                               style={{
-                                                color: "green",
+                                                color: "#34D0F8",
                                                 fontWeight: "bold",
                                                 fontSize: "0.9em",
                                               }}
@@ -879,17 +966,22 @@ export default function FanDashboard() {
                                                 joiningCampaign ===
                                                   camp.objectId || !canJoin
                                               }
+                                              className={
+                                                canJoin ? "gradient-button" : ""
+                                              }
                                               style={{
-                                                padding: "4px 12px",
-                                                fontSize: "0.8em",
+                                                padding: "6px 14px",
+                                                fontSize: "0.85em",
                                                 backgroundColor: canJoin
-                                                  ? "#9C27B0"
-                                                  : "#e0e0e0",
+                                                  ? undefined
+                                                  : "rgba(37, 41, 52, 0.8)",
                                                 color: canJoin
-                                                  ? "white"
+                                                  ? undefined
                                                   : "#999",
-                                                border: "none",
-                                                borderRadius: "4px",
+                                                border: canJoin
+                                                  ? undefined
+                                                  : "1px solid rgba(52, 208, 248, 0.2)",
+                                                borderRadius: "8px",
                                                 cursor: canJoin
                                                   ? "pointer"
                                                   : "not-allowed",
@@ -910,7 +1002,7 @@ export default function FanDashboard() {
                             )}
                           </div>
                         ) : (
-                          <span style={{ fontSize: "0.8em", color: "#888" }}>
+                          <span style={{ fontSize: "0.8em", color: "#D0D0D0" }}>
                             (Fan Token account will be created on first
                             purchase)
                           </span>
@@ -934,18 +1026,10 @@ export default function FanDashboard() {
                           handleSubscribe(content.creator, creatorId)
                         }
                         disabled={!account || subscribing === creatorId}
+                        className="gradient-button"
                         style={{
-                          padding: "6px 12px",
+                          padding: "10px 20px",
                           fontSize: "0.9em",
-                          backgroundColor:
-                            subscribing === creatorId ? "#ccc" : "#9C27B0",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "4px",
-                          cursor:
-                            !account || subscribing === creatorId
-                              ? "not-allowed"
-                              : "pointer",
                           marginBottom: "10px",
                           marginRight: "10px",
                         }}
@@ -973,13 +1057,9 @@ export default function FanDashboard() {
                         )
                       }
                       disabled={loading}
+                      className="gradient-button"
                       style={{
-                        padding: "8px 16px",
-                        backgroundColor: "#4CAF50",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: loading ? "not-allowed" : "pointer",
+                        padding: "10px 20px",
                         marginRight: "10px",
                       }}
                     >
@@ -988,13 +1068,13 @@ export default function FanDashboard() {
                         : "View Content / 查看內容"}
                     </button>
                     {content.purchased && (
-                      <span style={{ fontSize: "0.9em", color: "#4CAF50" }}>
+                      <span style={{ fontSize: "0.9em", color: "#34D0F8" }}>
                         ✓ Purchased / 已購買
                       </span>
                     )}
                     {!content.purchased &&
                       subscriptions.has(content.creatorId) && (
-                        <span style={{ fontSize: "0.9em", color: "#9C27B0" }}>
+                        <span style={{ fontSize: "0.9em", color: "#A300FF" }}>
                           ✓ Access via Subscription / 通過訂閱訪問
                         </span>
                       )}
@@ -1005,17 +1085,9 @@ export default function FanDashboard() {
                       handlePurchase(content.contentId, content.price)
                     }
                     disabled={!account || purchasing === content.contentId}
+                    className="gradient-button"
                     style={{
-                      padding: "8px 16px",
-                      backgroundColor:
-                        purchasing === content.contentId ? "#ccc" : "#FF9800",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor:
-                        purchasing === content.contentId
-                          ? "not-allowed"
-                          : "pointer",
+                      padding: "10px 20px",
                     }}
                   >
                     {purchasing === content.contentId
@@ -1037,10 +1109,14 @@ export default function FanDashboard() {
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%)",
-            background: "white",
-            padding: "20px",
-            borderRadius: "8px",
-            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+            background: "rgba(37, 41, 52, 0.95)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            padding: "24px",
+            borderRadius: "16px",
+            border: "1px solid rgba(52, 208, 248, 0.3)",
+            boxShadow:
+              "0 8px 32px rgba(0, 0, 0, 0.5), 0 0 40px rgba(163, 0, 255, 0.3)",
             zIndex: 1000,
             maxWidth: "90%",
             maxHeight: "90%",
@@ -1050,10 +1126,13 @@ export default function FanDashboard() {
             style={{
               display: "flex",
               justifyContent: "space-between",
-              marginBottom: "10px",
+              alignItems: "center",
+              marginBottom: "15px",
             }}
           >
-            <h3>Content Viewer / 內容查看器</h3>
+            <h3 style={{ color: "#FFFFFF", margin: 0 }}>
+              Content Viewer / 內容查看器
+            </h3>
             <button
               onClick={() => {
                 setViewingContent(null);
@@ -1061,12 +1140,22 @@ export default function FanDashboard() {
                 setContentUrl(null);
               }}
               style={{
-                padding: "5px 10px",
-                backgroundColor: "#f44336",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
+                padding: "8px 16px",
+                background: "rgba(255, 0, 128, 0.2)",
+                color: "#FF0080",
+                border: "1px solid rgba(255, 0, 128, 0.4)",
+                borderRadius: "8px",
                 cursor: "pointer",
+                fontWeight: "600",
+                transition: "all 0.3s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(255, 0, 128, 0.3)";
+                e.currentTarget.style.borderColor = "rgba(255, 0, 128, 0.6)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(255, 0, 128, 0.2)";
+                e.currentTarget.style.borderColor = "rgba(255, 0, 128, 0.4)";
               }}
             >
               Close / 關閉
@@ -1086,15 +1175,15 @@ export default function FanDashboard() {
 
       {error && (
         <div
+          className="glass-card"
           style={{
-            marginTop: "15px",
-            padding: "10px",
-            background: "#ffebee",
-            borderRadius: "4px",
-            color: "#c62828",
+            marginTop: "20px",
+            borderColor: "rgba(255, 0, 128, 0.4)",
+            background: "rgba(255, 0, 128, 0.1)",
           }}
         >
-          <strong>Error / 錯誤:</strong> {error}
+          <strong style={{ color: "#FF0080" }}>Error / 錯誤:</strong>{" "}
+          <span style={{ color: "#FFFFFF" }}>{error}</span>
         </div>
       )}
     </div>

@@ -416,44 +416,75 @@ export default function CreatorDashboard() {
 
   return (
     <div>
-      <h2>Creator Dashboard / 創作者儀表板</h2>
+      <h2
+        style={{
+          color: "#FFFFFF",
+          fontSize: "2em",
+          fontWeight: "700",
+          letterSpacing: "-0.02em",
+          marginBottom: "30px",
+        }}
+      >
+        Creator Dashboard / 創作者儀表板
+      </h2>
 
       {/* Creator Registration Section */}
       {loadingCreator ? (
-        <div style={{ padding: "20px", textAlign: "center" }}>
-          <p>Loading creator status... / 載入創作者狀態...</p>
+        <div className="glass-card" style={{ textAlign: "center" }}>
+          <p style={{ color: "#D0D0D0" }}>
+            Loading creator status... / 載入創作者狀態...
+          </p>
         </div>
       ) : !creatorInfo ? (
         <div
+          className="glass-card"
           style={{
-            padding: "20px",
-            border: "2px solid #ff9800",
-            borderRadius: "8px",
+            borderColor: "rgba(255, 152, 0, 0.4)",
+            background: "rgba(255, 152, 0, 0.1)",
             marginBottom: "20px",
-            background: "#fff3e0",
           }}
         >
-          <h3>Register as Creator / 註冊為創作者</h3>
-          <p style={{ color: "#666", marginBottom: "15px" }}>
+          <h3
+            style={{ color: "#FFFFFF", marginTop: "0", marginBottom: "15px" }}
+          >
+            Register as Creator / 註冊為創作者
+          </h3>
+          <p style={{ color: "#D0D0D0", marginBottom: "15px" }}>
             You need to register as a creator before uploading content.
             <br />
             您需要先註冊為創作者才能上傳內容。
           </p>
 
           <div style={{ marginBottom: "15px" }}>
-            <label>
+            <label
+              style={{
+                color: "#FFFFFF",
+                display: "block",
+                marginBottom: "8px",
+              }}
+            >
               Subscription Price (SUI) / 訂閱價格（SUI）:
-              <input
-                type="number"
-                step="0.1"
-                value={subscriptionPrice}
-                onChange={(e) => setSubscriptionPrice(e.target.value)}
-                disabled={registering}
-                style={{ marginLeft: "10px", width: "150px" }}
-                placeholder="1.0"
-              />
             </label>
-            <div style={{ fontSize: "0.8em", color: "#666", marginTop: "5px" }}>
+            <input
+              type="number"
+              step="0.1"
+              value={subscriptionPrice}
+              onChange={(e) => setSubscriptionPrice(e.target.value)}
+              disabled={registering}
+              style={{
+                width: "200px",
+                padding: "10px",
+                background: "rgba(0, 0, 0, 0.3)",
+                border: "1px solid rgba(52, 208, 248, 0.3)",
+                borderRadius: "8px",
+                color: "#FFFFFF",
+                outline: "none",
+              }}
+              placeholder="1.0"
+            />
+            <div
+              style={{ fontSize: "0.8em", color: "#D0D0D0", marginTop: "8px" }}
+            >
               Users can subscribe to access all your content
               <br />
               用戶可以訂閱以訪問您的所有內容
@@ -463,15 +494,8 @@ export default function CreatorDashboard() {
           <button
             onClick={handleRegisterCreator}
             disabled={registering}
-            style={{
-              padding: "10px 20px",
-              fontSize: "16px",
-              backgroundColor: registering ? "#ccc" : "#ff9800",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: registering ? "not-allowed" : "pointer",
-            }}
+            className="gradient-button"
+            style={{ padding: "12px 24px", fontSize: "1em" }}
           >
             {registering
               ? "Registering... / 註冊中..."
@@ -480,54 +504,64 @@ export default function CreatorDashboard() {
         </div>
       ) : (
         <div
+          className="glass-card"
           style={{
-            padding: "15px",
-            background: "#e8f5e9",
-            borderRadius: "4px",
+            borderColor: "rgba(52, 208, 248, 0.4)",
+            background: "rgba(52, 208, 248, 0.1)",
             marginBottom: "20px",
           }}
         >
-          <p style={{ margin: 0 }}>
+          <p style={{ margin: 0, color: "#FFFFFF" }}>
             <strong>✓ Registered as Creator / 已註冊為創作者</strong>
             <br />
-            <span style={{ fontSize: "0.9em", color: "#666" }}>
+            <span style={{ fontSize: "0.9em", color: "#D0D0D0" }}>
               Subscription Price:{" "}
-              {Number(
-                (creatorInfo.data?.content?.fields as any)
-                  ?.subscription_price || 0
-              ) / 1e9}{" "}
-              SUI
+              <span className="data-highlight">
+                {Number(
+                  (creatorInfo.data?.content?.fields as any)
+                    ?.subscription_price || 0
+                ) / 1e9}{" "}
+                SUI
+              </span>
             </span>
           </p>
         </div>
       )}
 
       <div
+        className="glass-card"
         style={{
-          padding: "20px",
-          border: "1px solid #ccc",
-          borderRadius: "8px",
           marginBottom: "20px",
           opacity: !creatorInfo ? 0.5 : 1,
           pointerEvents: !creatorInfo ? "none" : "auto",
         }}
       >
-        <h3>Upload Content / 上傳內容</h3>
+        <h3 style={{ color: "#FFFFFF", marginTop: "0", marginBottom: "20px" }}>
+          Upload Content / 上傳內容
+        </h3>
 
-        <div style={{ marginBottom: "15px" }}>
-          <label>
+        <div style={{ marginBottom: "20px" }}>
+          <label
+            style={{ color: "#FFFFFF", display: "block", marginBottom: "8px" }}
+          >
             Select File (Image or Video) / 選擇文件（圖片或影片）:
-            <input
-              type="file"
-              accept="image/*,video/*"
-              onChange={handleFileChange}
-              disabled={uploading || creating || !account}
-              style={{ marginLeft: "10px" }}
-            />
           </label>
+          <input
+            type="file"
+            accept="image/*,video/*"
+            onChange={handleFileChange}
+            disabled={uploading || creating || !account}
+            style={{
+              padding: "8px",
+              background: "rgba(0, 0, 0, 0.3)",
+              border: "1px solid rgba(52, 208, 248, 0.3)",
+              borderRadius: "8px",
+              color: "#FFFFFF",
+            }}
+          />
           {selectedFile && (
             <div
-              style={{ marginTop: "10px", fontSize: "0.9em", color: "#666" }}
+              style={{ marginTop: "10px", fontSize: "0.9em", color: "#D0D0D0" }}
             >
               Selected: {selectedFile.name} (
               {(selectedFile.size / 1024).toFixed(2)} KB)
@@ -535,35 +569,57 @@ export default function CreatorDashboard() {
           )}
         </div>
 
-        <div style={{ marginBottom: "15px" }}>
-          <label>
+        <div style={{ marginBottom: "20px" }}>
+          <label
+            style={{ color: "#FFFFFF", display: "block", marginBottom: "8px" }}
+          >
             Price (SUI) / 價格（SUI）:
-            <input
-              type="number"
-              step="0.001"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              disabled={uploading || creating || !account}
-              style={{ marginLeft: "10px", width: "150px" }}
-              placeholder="0.1"
-            />
           </label>
+          <input
+            type="number"
+            step="0.001"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            disabled={uploading || creating || !account}
+            style={{
+              width: "200px",
+              padding: "10px",
+              background: "rgba(0, 0, 0, 0.3)",
+              border: "1px solid rgba(52, 208, 248, 0.3)",
+              borderRadius: "8px",
+              color: "#FFFFFF",
+              outline: "none",
+            }}
+            placeholder="0.1"
+          />
         </div>
 
-        <div style={{ marginBottom: "15px" }}>
-          <label>
+        <div style={{ marginBottom: "20px" }}>
+          <label
+            style={{ color: "#FFFFFF", display: "block", marginBottom: "8px" }}
+          >
             Referral Split Ratio (%) / 推廣分成比例（%）:
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={referralSplitRatio}
-              onChange={(e) => setReferralSplitRatio(e.target.value)}
-              disabled={uploading || creating || !account}
-              style={{ marginLeft: "10px", width: "80px" }}
-            />
           </label>
-          <div style={{ fontSize: "0.8em", color: "#666", marginTop: "5px" }}>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={referralSplitRatio}
+            onChange={(e) => setReferralSplitRatio(e.target.value)}
+            disabled={uploading || creating || !account}
+            style={{
+              width: "120px",
+              padding: "10px",
+              background: "rgba(0, 0, 0, 0.3)",
+              border: "1px solid rgba(52, 208, 248, 0.3)",
+              borderRadius: "8px",
+              color: "#FFFFFF",
+              outline: "none",
+            }}
+          />
+          <div
+            style={{ fontSize: "0.8em", color: "#D0D0D0", marginTop: "8px" }}
+          >
             Percentage of revenue that goes to referrers (e.g., 15 = 15%)
             <br />
             給推廣者的收入百分比（例如，15 = 15%）
@@ -575,15 +631,8 @@ export default function CreatorDashboard() {
           disabled={
             !selectedFile || !price || uploading || creating || !account
           }
-          style={{
-            padding: "10px 20px",
-            fontSize: "16px",
-            backgroundColor: uploading || creating ? "#ccc" : "#4CAF50",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: uploading || creating ? "not-allowed" : "pointer",
-          }}
+          className="gradient-button"
+          style={{ padding: "12px 24px", fontSize: "1em" }}
         >
           {uploading
             ? "Uploading to Walrus... / 上傳到 Walrus..."
@@ -594,15 +643,15 @@ export default function CreatorDashboard() {
 
         {error && (
           <div
+            className="glass-card"
             style={{
-              marginTop: "15px",
-              padding: "10px",
-              background: "#ffebee",
-              borderRadius: "4px",
-              color: "#c62828",
+              marginTop: "20px",
+              borderColor: "rgba(255, 0, 128, 0.4)",
+              background: "rgba(255, 0, 128, 0.1)",
             }}
           >
-            <strong>Error / 錯誤:</strong> {error}
+            <strong style={{ color: "#FF0080" }}>Error / 錯誤:</strong>{" "}
+            <span style={{ color: "#FFFFFF" }}>{error}</span>
           </div>
         )}
       </div>
@@ -723,43 +772,41 @@ export default function CreatorDashboard() {
       </div>
 
       {/* Content List */}
-      <div
-        style={{
-          padding: "20px",
-          border: "1px solid #ccc",
-          borderRadius: "8px",
-        }}
-      >
+      <div className="glass-card" style={{ marginBottom: "20px" }}>
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: "15px",
+            marginBottom: "20px",
           }}
         >
-          <h3>Your Contents / 您的內容</h3>
+          <h3
+            style={{
+              color: "#FFFFFF",
+              margin: "0",
+              fontSize: "1.5em",
+              fontWeight: "700",
+            }}
+          >
+            Your Contents / 您的內容
+          </h3>
           <button
             onClick={loadCreatorContents}
             disabled={loadingContents}
-            style={{
-              padding: "5px 15px",
-              fontSize: "0.9em",
-              backgroundColor: "#2196F3",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: loadingContents ? "not-allowed" : "pointer",
-            }}
+            className="gradient-button"
+            style={{ padding: "8px 16px", fontSize: "0.9em" }}
           >
             {loadingContents ? "Loading... / 載入中..." : "Refresh / 刷新"}
           </button>
         </div>
 
         {loadingContents && contents.length === 0 ? (
-          <p style={{ color: "#666" }}>Loading contents... / 載入內容中...</p>
+          <p style={{ color: "#D0D0D0" }}>
+            Loading contents... / 載入內容中...
+          </p>
         ) : contents.length === 0 ? (
-          <p style={{ color: "#666" }}>
+          <p style={{ color: "#D0D0D0" }}>
             No content created yet. Upload your first content above!
             <br />
             尚未創建內容。請在上方上傳您的第一個內容！
@@ -769,27 +816,57 @@ export default function CreatorDashboard() {
             <div
               key={index}
               style={{
-                padding: "15px",
-                marginBottom: "10px",
-                background: "#f5f5f5",
-                borderRadius: "4px",
-                border: "1px solid #ddd",
+                padding: "20px",
+                marginBottom: "15px",
+                background: "rgba(37, 41, 52, 0.6)",
+                borderRadius: "12px",
+                border: "1px solid rgba(52, 208, 248, 0.2)",
               }}
             >
-              <p style={{ margin: "0 0 5px 0", fontWeight: "bold" }}>
+              <p
+                style={{
+                  margin: "0 0 12px 0",
+                  fontWeight: "600",
+                  color: "#FFFFFF",
+                  fontSize: "1.1em",
+                }}
+              >
                 Content #{index + 1}
               </p>
-              <p style={{ margin: "0", fontSize: "0.9em", color: "#666" }}>
-                Content ID: <code>{content.contentId || "Pending..."}</code>
+              <p style={{ margin: "0", fontSize: "0.95em", color: "#D0D0D0" }}>
+                Content ID:{" "}
+                <code
+                  className="monospace"
+                  style={{ color: "#00E0FF", wordBreak: "break-all" }}
+                >
+                  {content.contentId || "Pending..."}
+                </code>
                 <br />
                 Blob ID:{" "}
-                <code style={{ wordBreak: "break-all" }}>{content.blobId}</code>
+                <code
+                  className="monospace"
+                  style={{
+                    wordBreak: "break-all",
+                    color: "#00E0FF",
+                  }}
+                >
+                  {content.blobId}
+                </code>
                 <br />
-                Price: {Number(content.price) / 1e9} SUI
+                Price:{" "}
+                <span className="data-highlight">
+                  {Number(content.price) / 1e9} SUI
+                </span>
                 <br />
-                Referral Split: {content.referralSplitRatio}%
+                Referral Split:{" "}
+                <span className="data-highlight">
+                  {content.referralSplitRatio}%
+                </span>
                 <br />
-                Created: {content.createdAt.toLocaleString()}
+                Created:{" "}
+                <span style={{ color: "#D0D0D0" }}>
+                  {content.createdAt.toLocaleString()}
+                </span>
               </p>
             </div>
           ))

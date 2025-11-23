@@ -9,90 +9,132 @@ function App() {
   const account = useCurrentAccount();
   const [view, setView] = useState<"creator" | "fan" | "revenue">("fan");
 
+  // Gradient button style
+  const gradientButtonStyle = (isActive: boolean) => ({
+    padding: "12px 24px",
+    margin: "0 8px",
+    background: isActive
+      ? "linear-gradient(135deg, #34D0F8 0%, #A300FF 100%)"
+      : "rgba(37, 41, 52, 0.8)",
+    color: "#FFFFFF",
+    border: isActive ? "none" : "1px solid rgba(52, 208, 248, 0.3)",
+    borderRadius: "12px",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.95em",
+    letterSpacing: "0.5px",
+    transition: "all 0.3s ease",
+    boxShadow: isActive
+      ? "0 4px 20px rgba(163, 0, 255, 0.4), 0 0 20px rgba(52, 208, 248, 0.2)"
+      : "none",
+  });
+
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "20px" }}>
-      <header style={{ marginBottom: "30px", textAlign: "center" }}>
-        <h1 style={{ color: "#1976d2", marginBottom: "10px" }}>
-          Ownlyfans PoC
-        </h1>
-        <p style={{ color: "#888", marginTop: "10px" }}>
-          Decentralized content platform with referral rewards
-          <br />
-          去中心化內容平台，帶有推廣獎勵
-        </p>
-      </header>
-
-      <div
-        style={{
-          marginBottom: "20px",
-          display: "flex",
-          justifyContent: "center",
-        }}
-      >
-        <ConnectButton />
-      </div>
-
-      {!account ? (
-        <div style={{ textAlign: "center", padding: "40px" }}>
-          <p>Please connect your wallet to continue</p>
-          <p style={{ color: "#666" }}>請連接您的錢包以繼續</p>
-        </div>
-      ) : (
-        <>
-          <div style={{ marginBottom: "20px", textAlign: "center" }}>
-            <button
-              onClick={() => setView("creator")}
-              style={{
-                padding: "10px 20px",
-                margin: "0 10px",
-                backgroundColor: view === "creator" ? "#1976d2" : "#f0f0f0",
-                color: view === "creator" ? "white" : "black",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              Creator Dashboard / 創作者儀表板
-            </button>
-            <button
-              onClick={() => setView("fan")}
-              style={{
-                padding: "10px 20px",
-                margin: "0 10px",
-                backgroundColor: view === "fan" ? "#1976d2" : "#f0f0f0",
-                color: view === "fan" ? "white" : "black",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              Fan Dashboard / 粉絲儀表板
-            </button>
-            <button
-              onClick={() => setView("revenue")}
-              style={{
-                padding: "10px 20px",
-                margin: "0 10px",
-                backgroundColor: view === "revenue" ? "#1976d2" : "#f0f0f0",
-                color: view === "revenue" ? "white" : "black",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              Revenue Dashboard / 收益儀表板
-            </button>
+    <div className="app-container">
+      <div className="app-content">
+        <header className="app-header">
+          <div className="logo-container">
+            <img
+              src="/ownlyfans_logo.png"
+              alt="Ownlyfans Logo"
+              className="app-logo"
+            />
           </div>
+          <h1 className="app-title">Ownlyfans PoC</h1>
+          <p className="app-subtitle">
+            Decentralized content platform with referral rewards
+            <br />
+            去中心化內容平台，帶有推廣獎勵
+          </p>
+        </header>
 
-          {view === "creator" ? (
-            <CreatorDashboard />
-          ) : view === "fan" ? (
-            <FanDashboard />
-          ) : (
-            <RevenueDashboard />
-          )}
-        </>
-      )}
+        <div className="connect-button-wrapper">
+          <ConnectButton />
+        </div>
+
+        {!account ? (
+          <div className="empty-state">
+            <p>Please connect your wallet to continue</p>
+            <p>請連接您的錢包以繼續</p>
+          </div>
+        ) : (
+          <>
+            <div className="nav-buttons">
+              <button
+                onClick={() => setView("creator")}
+                style={gradientButtonStyle(view === "creator")}
+                onMouseEnter={(e) => {
+                  if (view !== "creator") {
+                    e.currentTarget.style.background =
+                      "rgba(52, 208, 248, 0.1)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(52, 208, 248, 0.5)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (view !== "creator") {
+                    e.currentTarget.style.background = "rgba(37, 41, 52, 0.8)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(52, 208, 248, 0.3)";
+                  }
+                }}
+              >
+                Creator Dashboard / 創作者儀表板
+              </button>
+              <button
+                onClick={() => setView("fan")}
+                style={gradientButtonStyle(view === "fan")}
+                onMouseEnter={(e) => {
+                  if (view !== "fan") {
+                    e.currentTarget.style.background =
+                      "rgba(52, 208, 248, 0.1)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(52, 208, 248, 0.5)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (view !== "fan") {
+                    e.currentTarget.style.background = "rgba(37, 41, 52, 0.8)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(52, 208, 248, 0.3)";
+                  }
+                }}
+              >
+                Fan Dashboard / 粉絲儀表板
+              </button>
+              <button
+                onClick={() => setView("revenue")}
+                style={gradientButtonStyle(view === "revenue")}
+                onMouseEnter={(e) => {
+                  if (view !== "revenue") {
+                    e.currentTarget.style.background =
+                      "rgba(52, 208, 248, 0.1)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(52, 208, 248, 0.5)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (view !== "revenue") {
+                    e.currentTarget.style.background = "rgba(37, 41, 52, 0.8)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(52, 208, 248, 0.3)";
+                  }
+                }}
+              >
+                Revenue Dashboard / 收益儀表板
+              </button>
+            </div>
+
+            {view === "creator" ? (
+              <CreatorDashboard />
+            ) : view === "fan" ? (
+              <FanDashboard />
+            ) : (
+              <RevenueDashboard />
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
