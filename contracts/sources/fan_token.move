@@ -1,8 +1,7 @@
 module ownlyfans::fan_token;
 
 use sui::event;
-use sui::object::{Self, UID, ID};
-use sui::tx_context::{Self, TxContext};
+use sui::table::{Self, Table};
 
 /// Fan Token Account for a user-creator pair
 /// 用戶-創作者對的 Fan Token 帳戶
@@ -16,6 +15,22 @@ public struct FanTokenAccount has key, store {
     last_expiry: u64,
 }
 
+/// Creator Token Statistics
+/// 創作者代幣統計
+public struct CreatorTokenStats has key {
+    id: UID,
+    creator: address,
+    total_minted: u64,
+    total_burned: u64,
+}
+
+/// Creator Stats Map to store creator -> stats_id mapping
+/// 創作者統計映射表，存儲創作者 -> 統計對象 ID 的映射
+public struct CreatorStatsMap has key {
+    id: UID,
+    map: Table<address, ID>,
+}
+
 /// Event emitted when tokens are burned
 /// 代幣被銷毀時發出的事件
 public struct TokenBurned has copy, drop {
@@ -25,6 +40,35 @@ public struct TokenBurned has copy, drop {
     amount: u64,
     new_balance: u64,
     new_total_burned: u64,
+}
+
+/// Event emitted when tokens are minted for a creator
+/// 為創作者鑄造代幣時發出的事件
+public struct TokensMinted has copy, drop {
+    creator: address,
+    amount: u64,
+    new_total_minted: u64,
+}
+
+/// Event emitted when tokens are burned for a creator
+/// 為創作者銷毀代幣時發出的事件
+public struct CreatorTokensBurned has copy, drop {
+    creator: address,
+    amount: u64,
+    new_total_burned: u64,
+}
+
+/// Event emitted when CreatorStatsMap is initialized
+/// CreatorStatsMap 初始化時發出的事件
+public struct CreatorStatsMapInitialized has copy, drop {
+    stats_map_id: ID,
+}
+
+/// Event emitted when CreatorTokenStats is created
+/// 創建 CreatorTokenStats 時發出的事件
+public struct CreatorStatsCreated has copy, drop {
+    creator: address,
+    stats_id: ID,
 }
 
 /// Constants for reward calculation
@@ -43,12 +87,14 @@ const EARLY_BONUS_TIER3: u64 = 1000;              // 1.0x for sold_count >= 100
 
 /// Time constants for streak calculation
 /// 用於計算連續訂閱的時間常數
-const PERIOD_SECONDS: u64 = 30 * 24 * 60 * 60;    // 30 days in seconds
+/// const PERIOD_SECONDS: u64 = 30 * 24 * 60 * 60;    // 30 days in seconds
 const GRACE_SECONDS: u64 = 3 * 24 * 60 * 60;      // 3 days grace period
 
 /// Error codes
 /// 錯誤代碼
 const E_INSUFFICIENT_BALANCE: u64 = 1;
+const E_STATS_NOT_FOUND: u64 = 2;
+const E_STATS_ALREADY_EXISTS: u64 = 3;
 
 /// Create a new Fan Token Account
 /// 創建新的 Fan Token 帳戶
@@ -106,8 +152,13 @@ public fun get_last_expiry(account: &FanTokenAccount): u64 {
 
 /// Add reward tokens to account
 /// 向帳戶添加獎勵代幣
-public fun add_reward(account: &mut FanTokenAccount, amount: u64) {
+public fun add_reward(
+    account: &mut FanTokenAccount,
+    stats: &mut CreatorTokenStats,
+    amount: u64
+) {
     account.balance = account.balance + amount;
+    increment_total_minted(stats, amount);
 }
 
 /// Calculate reward for content purchase
@@ -227,8 +278,9 @@ public fun calculate_streak(
 /// 從帳戶銷毀代幣（公開版本）
 public fun burn_token_internal(
     account: &mut FanTokenAccount,
+    stats: &mut CreatorTokenStats,
     amount: u64,
-    ctx: &TxContext
+    _ctx: &TxContext
 ) {
     // Verify caller is the account owner (or authorized module)
     // Note: In Move, we can't easily verify caller in public functions called by other modules
@@ -246,6 +298,10 @@ public fun burn_token_internal(
     account.balance = account.balance - amount;
     account.total_burned = account.total_burned + amount;
     
+    // Update creator stats
+    // 更新創作者統計
+    increment_total_burned(stats, amount);
+    
     // Emit event
     // 發出事件
     event::emit(TokenBurned {
@@ -262,6 +318,7 @@ public fun burn_token_internal(
 /// 從帳戶銷毀代幣
 public entry fun burn_token(
     account: &mut FanTokenAccount,
+    stats: &mut CreatorTokenStats,
     amount: u64,
     ctx: &TxContext
 ) {
@@ -270,6 +327,118 @@ public entry fun burn_token(
     let caller = sui::tx_context::sender(ctx);
     assert!(caller == account.user, 2);
     
-    burn_token_internal(account, amount, ctx);
+    burn_token_internal(account, stats, amount, ctx);
+}
+
+/// Initialize CreatorStatsMap (called once during module initialization)
+/// 初始化創作者統計映射表（在模組初始化時調用一次）
+fun init(ctx: &mut TxContext) {
+    let map = CreatorStatsMap {
+        id: sui::object::new(ctx),
+        map: table::new(ctx),
+    };
+    let map_id = sui::object::id(&map);
+    event::emit(CreatorStatsMapInitialized {
+        stats_map_id: map_id,
+    });
+    transfer::share_object(map);
+}
+
+/// Create creator token statistics
+/// 創建創作者代幣統計
+public fun create_creator_stats(
+    stats_map: &mut CreatorStatsMap,
+    creator: address,
+    ctx: &mut TxContext
+): ID {
+    // Check if stats already exists
+    // 檢查統計是否已存在
+    assert!(!table::contains(&stats_map.map, creator), E_STATS_ALREADY_EXISTS);
+    
+    let stats = CreatorTokenStats {
+        id: sui::object::new(ctx),
+        creator,
+        total_minted: 0,
+        total_burned: 0,
+    };
+    
+    let stats_id = sui::object::id(&stats);
+    table::add(&mut stats_map.map, creator, stats_id);
+    transfer::share_object(stats);
+    
+    // Emit event
+    // 發出事件
+    event::emit(CreatorStatsCreated {
+        creator,
+        stats_id,
+    });
+    
+    stats_id
+}
+
+/// Get creator stats ID from map
+/// 從映射表中獲取創作者統計 ID
+public fun get_creator_stats_id(
+    stats_map: &CreatorStatsMap,
+    creator: address
+): ID {
+    assert!(table::contains(&stats_map.map, creator), E_STATS_NOT_FOUND);
+    *table::borrow(&stats_map.map, creator)
+}
+
+/// Increment total minted for creator
+/// 增加創作者的總鑄造量
+public fun increment_total_minted(
+    stats: &mut CreatorTokenStats,
+    amount: u64
+) {
+    stats.total_minted = stats.total_minted + amount;
+    event::emit(TokensMinted {
+        creator: stats.creator,
+        amount,
+        new_total_minted: stats.total_minted,
+    });
+}
+
+/// Increment total burned for creator
+/// 增加創作者的總銷毀量
+public fun increment_total_burned(
+    stats: &mut CreatorTokenStats,
+    amount: u64
+) {
+    stats.total_burned = stats.total_burned + amount;
+    event::emit(CreatorTokensBurned {
+        creator: stats.creator,
+        amount,
+        new_total_burned: stats.total_burned,
+    });
+}
+
+/// Get total minted
+/// 獲取總鑄造量
+public fun get_total_minted(stats: &CreatorTokenStats): u64 {
+    stats.total_minted
+}
+
+/// Get total burned for creator
+/// 獲取創作者的總銷毀量
+public fun get_creator_total_burned(stats: &CreatorTokenStats): u64 {
+    stats.total_burned
+}
+
+/// Get current supply (total_minted - total_burned)
+/// 獲取當前供應量（總鑄造量 - 總銷毀量）
+public fun get_current_supply(stats: &CreatorTokenStats): u64 {
+    if (stats.total_minted >= stats.total_burned) {
+        stats.total_minted - stats.total_burned
+    } else {
+        0
+    }
+}
+
+/// Get creator address from stats
+/// 從統計中獲取創作者地址
+public fun get_creator_from_stats(stats: &CreatorTokenStats): address {
+    stats.creator
 }
 

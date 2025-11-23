@@ -6,7 +6,7 @@ use sui::sui::SUI;
 use sui::event;
 use ownlyfans::content_registry::{Self, Content};
 use ownlyfans::allowlist::{Self, Allowlist};
-use ownlyfans::fan_token::{Self, FanTokenAccount};
+use ownlyfans::fan_token::{Self, FanTokenAccount, CreatorTokenStats};
 
 /// Event emitted when content is purchased
 /// 購買內容時發出的事件
@@ -25,6 +25,7 @@ public entry fun purchase_content(
     content: &mut Content,
     allowlist: &mut Allowlist,
     fan_token_account: &mut FanTokenAccount,
+    creator_stats: &mut CreatorTokenStats,
     payment: Coin<SUI>,
     referral_address: address,
     ctx: &mut TxContext
@@ -58,7 +59,7 @@ public entry fun purchase_content(
     // 計算並添加 Fan Token 獎勵
     let sold_count = content_registry::get_sold_count(content);
     let reward = fan_token::calculate_content_reward(payment_amount, sold_count);
-    fan_token::add_reward(fan_token_account, reward);
+    fan_token::add_reward(fan_token_account, creator_stats, reward);
     
     // Increment sold count
     // 增加銷售計數

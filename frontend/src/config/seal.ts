@@ -58,7 +58,7 @@ export const SEAL_VERIFY_KEY_SERVERS = true;
  */
 export const SEAL_POLICY_PACKAGE_ID =
   import.meta.env.VITE_SEAL_POLICY_PACKAGE_ID ??
-  "0x80655078fe831291c08ad1e428ef4d585fe3775db9b04b915a3ca196321102b3";
+  "0x962338f67350fc914b7f5c27b06084df75050a2bc57629a7ca051f542b4e3efe";
 
 /**
  * Helper to validate that a policy package ID is configured before using Seal.

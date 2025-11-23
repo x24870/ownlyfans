@@ -2,7 +2,6 @@ module ownlyfans::seal_access;
 
 use sui::event;
 use sui::clock::Clock;
-use sui::object::ID;
 use ownlyfans::content_registry::{Self, Content};
 use ownlyfans::creator_registry::{Self, Creator};
 use ownlyfans::allowlist::{Self, Allowlist};

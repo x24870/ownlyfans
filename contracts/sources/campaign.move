@@ -2,9 +2,7 @@ module ownlyfans::campaign;
 
 use std::string::{String};
 use sui::event;
-use sui::object::{Self, UID, ID};
-use sui::tx_context::{Self, TxContext};
-use ownlyfans::fan_token::{Self, FanTokenAccount};
+use ownlyfans::fan_token::{Self, FanTokenAccount, CreatorTokenStats};
 
 /// Campaign object
 /// 活動對象
@@ -79,6 +77,7 @@ public entry fun create_campaign(
 public entry fun join_campaign(
     campaign: &mut Campaign,
     account: &mut FanTokenAccount,
+    creator_stats: &mut CreatorTokenStats,
     ctx: &mut TxContext
 ) {
     let sender = sui::tx_context::sender(ctx);
@@ -103,7 +102,7 @@ public entry fun join_campaign(
     
     // Burn tokens
     // 銷毀代幣
-    fan_token::burn_token_internal(account, campaign.cost, ctx);
+    fan_token::burn_token_internal(account, creator_stats, campaign.cost, ctx);
     
     // Add to participants
     // 添加到參與者列表

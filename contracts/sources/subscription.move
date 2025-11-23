@@ -6,7 +6,7 @@ use sui::sui::SUI;
 use sui::clock::Clock;
 use sui::event;
 use ownlyfans::creator_registry::{Self, Creator};
-use ownlyfans::fan_token::{Self, FanTokenAccount};
+use ownlyfans::fan_token::{Self, FanTokenAccount, CreatorTokenStats};
 
 /// Subscription to a creator's all content
 /// 訂閱創作者的所有內容
@@ -43,6 +43,7 @@ const DEFAULT_SUBSCRIPTION_REFERRAL_RATIO: u64 = 1500;
 public entry fun subscribe_creator(
     creator: &Creator,
     fan_token_account: &mut FanTokenAccount,
+    creator_stats: &mut CreatorTokenStats,
     payment: Coin<SUI>,
     referral_address: address,
     clock: &Clock,
@@ -118,7 +119,7 @@ public entry fun subscribe_creator(
     );
     
     let reward = fan_token::calculate_subscription_reward(payment_amount, streak);
-    fan_token::add_reward(fan_token_account, reward);
+    fan_token::add_reward(fan_token_account, creator_stats, reward);
     
     let subscription = Subscription {
         id: sui::object::new(ctx),

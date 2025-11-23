@@ -155,25 +155,6 @@ export default function RevenueDashboard() {
               fontWeight: "600",
             }}
           >
-            Total Clicks / 總點擊數
-          </h3>
-          <p
-            className="data-highlight"
-            style={{ fontSize: "2.5em", fontWeight: "700", margin: 0 }}
-          >
-            {stats.totalClicks}
-          </p>
-        </div>
-
-        <div className="glass-card">
-          <h3
-            style={{
-              margin: "0 0 15px 0",
-              color: "#FFFFFF",
-              fontSize: "1.1em",
-              fontWeight: "600",
-            }}
-          >
             Total Purchases / 總購買數
           </h3>
           <p
@@ -181,25 +162,6 @@ export default function RevenueDashboard() {
             style={{ fontSize: "2.5em", fontWeight: "700", margin: 0 }}
           >
             {stats.totalPurchases}
-          </p>
-        </div>
-
-        <div className="glass-card">
-          <h3
-            style={{
-              margin: "0 0 15px 0",
-              color: "#FFFFFF",
-              fontSize: "1.1em",
-              fontWeight: "600",
-            }}
-          >
-            Conversion Rate / 轉換率
-          </h3>
-          <p
-            className="data-highlight"
-            style={{ fontSize: "2.5em", fontWeight: "700", margin: 0 }}
-          >
-            {stats.conversionRate.toFixed(2)}%
           </p>
         </div>
 

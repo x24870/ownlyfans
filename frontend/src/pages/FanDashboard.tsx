@@ -20,6 +20,8 @@ import {
   hasJoinedCampaign,
   getAllCreators,
   getCreatorContents,
+  getTotalBurnedTokens,
+  getCreatorTokenStats,
 } from "../utils/contract";
 import {
   decryptWithSeal,
@@ -59,6 +61,8 @@ export default function FanDashboard() {
   const [loadingCreators, setLoadingCreators] = useState(false);
   const [creatorContents, setCreatorContents] = useState<ContentItem[]>([]);
   const [loadingCreatorContents, setLoadingCreatorContents] = useState(false);
+  const [totalBurnedTokens, setTotalBurnedTokens] = useState<bigint>(BigInt(0));
+  const [creatorStats, setCreatorStats] = useState<Map<string, any>>(new Map());
 
   // Track subscriptions by creator ID
   // 按創作者 ID 跟踪訂閱
@@ -79,8 +83,23 @@ export default function FanDashboard() {
   // 當組件載入或賬戶變更時載入所有內容
   useEffect(() => {
     loadAllCreators();
+    loadTotalBurnedTokens();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account]);
+
+  const loadTotalBurnedTokens = async () => {
+    if (!account) {
+      setTotalBurnedTokens(BigInt(0));
+      return;
+    }
+
+    try {
+      const total = await getTotalBurnedTokens(account.address);
+      setTotalBurnedTokens(total);
+    } catch (error) {
+      console.error("Error loading total burned tokens:", error);
+    }
+  };
 
   const loadAllCreators = async () => {
     setLoadingCreators(true);
@@ -130,6 +149,16 @@ export default function FanDashboard() {
       const fanToken = account
         ? await getFanTokenAccount(creatorAddress, account.address)
         : null;
+
+      // Load Creator Token Statistics
+      const stats = await getCreatorTokenStats(creatorAddress);
+      if (stats) {
+        setCreatorStats((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(creatorAddress, stats);
+          return newMap;
+        });
+      }
 
       // Process content objects
       const contentsWithStatus: ContentItem[] = await Promise.all(
@@ -244,6 +273,7 @@ export default function FanDashboard() {
             if (selectedCreator) {
               await loadCreatorContents(selectedCreator);
             }
+            await loadTotalBurnedTokens();
             setPurchasing(null);
 
             // Generate referral link
@@ -295,6 +325,7 @@ export default function FanDashboard() {
             if (selectedCreator) {
               await loadCreatorContents(selectedCreator);
             }
+            await loadTotalBurnedTokens();
             setSubscribing(null);
             alert("Subscription successful! / 訂閱成功！");
           },
@@ -316,7 +347,8 @@ export default function FanDashboard() {
   const handleJoinCampaign = async (
     campaignId: string,
     fanTokenAccountId: string,
-    _cost: number
+    _cost: number,
+    creatorAddress: string
   ) => {
     if (!account) return;
 
@@ -325,7 +357,11 @@ export default function FanDashboard() {
 
     setJoiningCampaign(campaignId);
     try {
-      const tx = joinCampaignTransaction(campaignId, fanTokenAccountId);
+      const tx = await joinCampaignTransaction(
+        campaignId,
+        fanTokenAccountId,
+        creatorAddress
+      );
       signAndExecute(
         { transaction: tx as any },
         {
@@ -333,6 +369,7 @@ export default function FanDashboard() {
             if (selectedCreator) {
               await loadCreatorContents(selectedCreator);
             }
+            await loadTotalBurnedTokens();
             setJoiningCampaign(null);
             alert("Joined campaign successfully! / 參加活動成功！");
           },
@@ -693,411 +730,489 @@ export default function FanDashboard() {
         </div>
       ) : (
         /* Creator Content View */
-        <div className="glass-card">
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "20px",
-              flexWrap: "wrap",
-              gap: "15px",
-            }}
-          >
+        <div>
+          {/* Fan Tokens and Campaigns Section */}
+          {(() => {
+            const fanTokenInfo = fanTokens.get(selectedCreator);
+            const fanTokenFields = fanTokenInfo?.content?.fields;
+            const creatorCampaigns = campaigns.get(selectedCreator) || [];
+
+            if (!fanTokenInfo && creatorCampaigns.length === 0) {
+              return null;
+            }
+
+            return (
+              <div className="glass-card" style={{ marginBottom: "20px" }}>
+                {fanTokenInfo && (
+                  <div
+                    style={{
+                      marginBottom: creatorCampaigns.length > 0 ? "20px" : "0",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        color: "#FFFFFF",
+                        margin: "0 0 12px 0",
+                        fontSize: "1.2em",
+                        fontWeight: "600",
+                      }}
+                    >
+                      Fan Tokens / 粉絲代幣
+                    </h4>
+                    <div
+                      style={{
+                        padding: "16px",
+                        background: "rgba(52, 208, 248, 0.1)",
+                        borderRadius: "12px",
+                        border: "1px solid rgba(52, 208, 248, 0.3)",
+                        fontSize: "0.95em",
+                      }}
+                    >
+                      <div style={{ marginBottom: "12px" }}>
+                        <strong style={{ color: "#FFFFFF" }}>
+                          Balance / 餘額:
+                        </strong>{" "}
+                        <span className="data-highlight">
+                          {fanTokenFields?.balance}
+                        </span>
+                        <span style={{ marginLeft: "10px", color: "#D0D0D0" }}>
+                          (Burned / 已銷毀:{" "}
+                          <span style={{ color: "#FFFFFF", fontWeight: "700" }}>
+                            {fanTokenFields?.total_burned}
+                          </span>
+                          )
+                        </span>
+                      </div>
+                      {account && totalBurnedTokens > 0 && (
+                        <div
+                          style={{
+                            paddingTop: "12px",
+                            borderTop: "1px solid rgba(52, 208, 248, 0.3)",
+                          }}
+                        >
+                          <strong style={{ color: "#FFFFFF" }}>
+                            Total Burned (All Creators) /
+                            總燒毀量（所有創作者）:
+                          </strong>{" "}
+                          <span
+                            className="data-highlight"
+                            style={{ fontSize: "1.1em", fontWeight: "700" }}
+                          >
+                            {totalBurnedTokens.toString()}
+                          </span>
+                        </div>
+                      )}
+                      {(() => {
+                        const stats = creatorStats.get(selectedCreator || "");
+                        if (stats) {
+                          const statsFields = (stats.content as any)?.fields;
+                          const totalMinted = statsFields?.total_minted || 0;
+                          const totalBurned = statsFields?.total_burned || 0;
+                          const currentSupply = totalMinted - totalBurned;
+                          return (
+                            <div
+                              style={{
+                                paddingTop: "12px",
+                                borderTop: "1px solid rgba(52, 208, 248, 0.3)",
+                                marginTop: "12px",
+                              }}
+                            >
+                              <div style={{ marginBottom: "8px" }}>
+                                <strong style={{ color: "#FFFFFF" }}>
+                                  Total Minted / 總鑄造量:
+                                </strong>{" "}
+                                <span className="data-highlight">
+                                  {totalMinted.toString()}
+                                </span>
+                              </div>
+                              <div style={{ marginBottom: "8px" }}>
+                                <strong style={{ color: "#FFFFFF" }}>
+                                  Current Supply / 當前供應量:
+                                </strong>{" "}
+                                <span className="data-highlight">
+                                  {currentSupply.toString()}
+                                </span>
+                              </div>
+                              <div>
+                                <strong style={{ color: "#FFFFFF" }}>
+                                  Total Burned / 總燒毀量:
+                                </strong>{" "}
+                                <span className="data-highlight">
+                                  {totalBurned.toString()}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {creatorCampaigns.length > 0 && (
+                  <div>
+                    <h4
+                      style={{
+                        color: "#FFFFFF",
+                        margin: "0 0 12px 0",
+                        fontSize: "1.2em",
+                        fontWeight: "600",
+                      }}
+                    >
+                      Active Campaigns / 進行中的活動
+                    </h4>
+                    {creatorCampaigns.map((camp: any, idx: number) => {
+                      const fields = camp.content?.fields;
+                      if (!fields?.active) return null;
+
+                      const joined = camp.joined;
+                      const cost = Number(fields.cost);
+                      const canJoin =
+                        fanTokenInfo && Number(fanTokenFields?.balance) >= cost;
+
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            background: "rgba(37, 41, 52, 0.6)",
+                            padding: "16px",
+                            marginBottom: "12px",
+                            borderRadius: "12px",
+                            border: "1px solid rgba(163, 0, 255, 0.3)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: "600",
+                              color: "#FFFFFF",
+                              marginBottom: "8px",
+                              fontSize: "1.05em",
+                            }}
+                          >
+                            {fields.title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "0.9em",
+                              color: "#D0D0D0",
+                              marginBottom: "12px",
+                            }}
+                          >
+                            {fields.description}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              className="data-highlight"
+                              style={{
+                                fontWeight: "bold",
+                                fontSize: "0.95em",
+                              }}
+                            >
+                              Cost: {cost} Fan Tokens
+                            </span>
+                            {joined ? (
+                              <span
+                                style={{
+                                  color: "#34D0F8",
+                                  fontWeight: "bold",
+                                  fontSize: "0.9em",
+                                }}
+                              >
+                                ✓ Joined / 已參加
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  handleJoinCampaign(
+                                    camp.objectId,
+                                    fanTokenInfo?.objectId || "",
+                                    cost,
+                                    selectedCreator
+                                  )
+                                }
+                                disabled={
+                                  !fanTokenInfo ||
+                                  joiningCampaign === camp.objectId ||
+                                  !canJoin
+                                }
+                                className={canJoin ? "gradient-button" : ""}
+                                style={{
+                                  padding: "8px 16px",
+                                  fontSize: "0.85em",
+                                  backgroundColor: canJoin
+                                    ? undefined
+                                    : "rgba(37, 41, 52, 0.8)",
+                                  color: canJoin ? undefined : "#999",
+                                  border: canJoin
+                                    ? undefined
+                                    : "1px solid rgba(52, 208, 248, 0.2)",
+                                  borderRadius: "8px",
+                                  cursor: canJoin ? "pointer" : "not-allowed",
+                                }}
+                              >
+                                {joiningCampaign === camp.objectId
+                                  ? "Joining... / 參加中..."
+                                  : "Join Campaign / 參加活動"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <div className="glass-card">
             <div
               style={{
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                gap: "15px",
+                marginBottom: "20px",
                 flexWrap: "wrap",
+                gap: "15px",
               }}
             >
-              <button
-                onClick={handleBackToCreators}
-                style={{
-                  padding: "10px 20px",
-                  fontSize: "0.9em",
-                  background: "rgba(37, 41, 52, 0.8)",
-                  color: "#FFFFFF",
-                  border: "1px solid rgba(52, 208, 248, 0.3)",
-                  borderRadius: "12px",
-                  cursor: "pointer",
-                  transition: "all 0.3s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(52, 208, 248, 0.6)";
-                  e.currentTarget.style.background = "rgba(52, 208, 248, 0.1)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(52, 208, 248, 0.3)";
-                  e.currentTarget.style.background = "rgba(37, 41, 52, 0.8)";
-                }}
-              >
-                ← Back to Creators / 返回創作者列表
-              </button>
-              <h3
-                style={{
-                  margin: 0,
-                  color: "#FFFFFF",
-                  fontSize: "1.5em",
-                  fontWeight: "700",
-                }}
-              >
-                Creator Content / 創作者內容:{" "}
-                <code
-                  className="monospace"
-                  style={{ fontSize: "0.7em", color: "#00E0FF" }}
-                >
-                  {selectedCreator}
-                </code>
-              </h3>
-            </div>
-            <button
-              onClick={() => loadCreatorContents(selectedCreator)}
-              disabled={loadingCreatorContents}
-              className="gradient-button"
-              style={{ padding: "8px 16px", fontSize: "0.9em" }}
-            >
-              {loadingCreatorContents
-                ? "Loading... / 載入中..."
-                : "Refresh / 刷新"}
-            </button>
-          </div>
-
-          {loadingCreatorContents && creatorContents.length === 0 ? (
-            <p style={{ color: "#D0D0D0" }}>
-              Loading contents... / 載入內容中...
-            </p>
-          ) : creatorContents.length === 0 ? (
-            <p style={{ color: "#D0D0D0" }}>
-              No content available from this creator yet. /
-              此創作者尚無可用內容。
-            </p>
-          ) : (
-            creatorContents.map((content) => (
               <div
-                key={content.contentId}
                 style={{
-                  padding: "20px",
-                  marginBottom: "15px",
-                  background: "rgba(37, 41, 52, 0.6)",
-                  borderRadius: "12px",
-                  border: "1px solid rgba(52, 208, 248, 0.2)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "15px",
+                  flexWrap: "wrap",
                 }}
               >
-                <p
+                <button
+                  onClick={handleBackToCreators}
                   style={{
-                    margin: "0 0 12px 0",
-                    fontWeight: "600",
+                    padding: "10px 20px",
+                    fontSize: "0.9em",
+                    background: "rgba(37, 41, 52, 0.8)",
                     color: "#FFFFFF",
+                    border: "1px solid rgba(52, 208, 248, 0.3)",
+                    borderRadius: "12px",
+                    cursor: "pointer",
+                    transition: "all 0.3s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor =
+                      "rgba(52, 208, 248, 0.6)";
+                    e.currentTarget.style.background =
+                      "rgba(52, 208, 248, 0.1)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor =
+                      "rgba(52, 208, 248, 0.3)";
+                    e.currentTarget.style.background = "rgba(37, 41, 52, 0.8)";
                   }}
                 >
-                  Content ID:{" "}
-                  <code className="monospace" style={{ color: "#00E0FF" }}>
-                    {content.contentId}
-                  </code>
-                </p>
-                <p
+                  ← Back to Creators / 返回創作者列表
+                </button>
+                <h3
                   style={{
-                    margin: "0 0 12px 0",
-                    fontSize: "0.95em",
-                    color: "#D0D0D0",
+                    margin: 0,
+                    color: "#FFFFFF",
+                    fontSize: "1.5em",
+                    fontWeight: "700",
                   }}
                 >
-                  Price:{" "}
-                  <span className="data-highlight">
-                    {Number(content.price) / 1e9} SUI
-                  </span>
-                  <br />
-                  Creator:{" "}
-                  <code className="monospace" style={{ color: "#00E0FF" }}>
-                    {content.creator}
+                  Creator Content / 創作者內容:{" "}
+                  <code
+                    className="monospace"
+                    style={{ fontSize: "0.7em", color: "#00E0FF" }}
+                  >
+                    {selectedCreator}
                   </code>
-                  <br />
+                </h3>
+              </div>
+              <button
+                onClick={() => loadCreatorContents(selectedCreator)}
+                disabled={loadingCreatorContents}
+                className="gradient-button"
+                style={{ padding: "8px 16px", fontSize: "0.9em" }}
+              >
+                {loadingCreatorContents
+                  ? "Loading... / 載入中..."
+                  : "Refresh / 刷新"}
+              </button>
+            </div>
+
+            {loadingCreatorContents && creatorContents.length === 0 ? (
+              <p style={{ color: "#D0D0D0" }}>
+                Loading contents... / 載入內容中...
+              </p>
+            ) : creatorContents.length === 0 ? (
+              <p style={{ color: "#D0D0D0" }}>
+                No content available from this creator yet. /
+                此創作者尚無可用內容。
+              </p>
+            ) : (
+              creatorContents.map((content) => (
+                <div
+                  key={content.contentId}
+                  style={{
+                    padding: "20px",
+                    marginBottom: "15px",
+                    background: "rgba(37, 41, 52, 0.6)",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(52, 208, 248, 0.2)",
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: "0 0 12px 0",
+                      fontWeight: "600",
+                      color: "#FFFFFF",
+                    }}
+                  >
+                    Content ID:{" "}
+                    <code className="monospace" style={{ color: "#00E0FF" }}>
+                      {content.contentId}
+                    </code>
+                  </p>
+                  <p
+                    style={{
+                      margin: "0 0 12px 0",
+                      fontSize: "0.95em",
+                      color: "#D0D0D0",
+                    }}
+                  >
+                    Price:{" "}
+                    <span className="data-highlight">
+                      {Number(content.price) / 1e9} SUI
+                    </span>
+                    <br />
+                    Creator:{" "}
+                    <code className="monospace" style={{ color: "#00E0FF" }}>
+                      {content.creator}
+                    </code>
+                    <br />
+                    {(() => {
+                      const creator = creators.get(content.creator);
+                      const creatorId = creator?.data?.objectId;
+                      const subscriptionPrice =
+                        Number(
+                          (creator?.data?.content?.fields as any)
+                            ?.subscription_price || 0
+                        ) / 1e9;
+                      const isSubscribed =
+                        creatorId && subscriptions.has(creatorId);
+
+                      return (
+                        <>
+                          Creator Subscription:{" "}
+                          <span className="data-highlight">
+                            {subscriptionPrice} SUI
+                          </span>{" "}
+                          {isSubscribed && (
+                            <span style={{ color: "#34D0F8" }}>
+                              {" "}
+                              (✓ Subscribed / 已訂閱)
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </p>
+
+                  {/* Subscription Button */}
                   {(() => {
                     const creator = creators.get(content.creator);
                     const creatorId = creator?.data?.objectId;
-                    const subscriptionPrice =
-                      Number(
-                        (creator?.data?.content?.fields as any)
-                          ?.subscription_price || 0
-                      ) / 1e9;
                     const isSubscribed =
                       creatorId && subscriptions.has(creatorId);
 
-                    // Fan Token Info
-                    const fanTokenInfo = fanTokens.get(content.creator);
-                    const fanTokenFields = fanTokenInfo?.content?.fields;
-
-                    // Campaign Info
-                    const creatorCampaigns =
-                      campaigns.get(content.creator) || [];
-
-                    return (
-                      <>
-                        Creator Subscription:{" "}
-                        <span className="data-highlight">
-                          {subscriptionPrice} SUI
-                        </span>{" "}
-                        {isSubscribed && (
-                          <span style={{ color: "#34D0F8" }}>
-                            {" "}
-                            (✓ Subscribed / 已訂閱)
-                          </span>
-                        )}
-                        <br />
-                        {fanTokenInfo ? (
-                          <div
-                            style={{
-                              marginTop: "12px",
-                              padding: "16px",
-                              background: "rgba(52, 208, 248, 0.1)",
-                              borderRadius: "12px",
-                              border: "1px solid rgba(52, 208, 248, 0.3)",
-                              fontSize: "0.9em",
-                            }}
-                          >
-                            <strong style={{ color: "#FFFFFF" }}>
-                              Fan Tokens:
-                            </strong>{" "}
-                            <span className="data-highlight">
-                              {fanTokenFields?.balance}
-                            </span>
-                            <span
-                              style={{ marginLeft: "10px", color: "#D0D0D0" }}
-                            >
-                              (Burned:{" "}
-                              <span
-                                style={{ color: "#FFFFFF", fontWeight: "700" }}
-                              >
-                                {fanTokenFields?.total_burned}
-                              </span>
-                              )
-                            </span>
-                            {/* Campaign List */}
-                            {creatorCampaigns.length > 0 && (
-                              <div
-                                style={{
-                                  marginTop: "15px",
-                                  borderTop:
-                                    "1px solid rgba(52, 208, 248, 0.3)",
-                                  paddingTop: "12px",
-                                }}
-                              >
-                                <strong style={{ color: "#FFFFFF" }}>
-                                  Active Campaigns / 進行中的活動:
-                                </strong>
-                                {creatorCampaigns.map(
-                                  (camp: any, idx: number) => {
-                                    const fields = camp.content?.fields;
-                                    if (!fields?.active) return null;
-
-                                    const joined = camp.joined; // We attached this in loadAllContents
-                                    const cost = Number(fields.cost);
-                                    const canJoin =
-                                      Number(fanTokenFields?.balance) >= cost;
-
-                                    return (
-                                      <div
-                                        key={idx}
-                                        style={{
-                                          background: "rgba(37, 41, 52, 0.6)",
-                                          padding: "12px",
-                                          marginTop: "10px",
-                                          borderRadius: "10px",
-                                          border:
-                                            "1px solid rgba(163, 0, 255, 0.3)",
-                                        }}
-                                      >
-                                        <div
-                                          style={{
-                                            fontWeight: "600",
-                                            color: "#FFFFFF",
-                                            marginBottom: "6px",
-                                          }}
-                                        >
-                                          {fields.title}
-                                        </div>
-                                        <div
-                                          style={{
-                                            fontSize: "0.9em",
-                                            color: "#D0D0D0",
-                                            marginBottom: "10px",
-                                          }}
-                                        >
-                                          {fields.description}
-                                        </div>
-                                        <div
-                                          style={{
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            alignItems: "center",
-                                          }}
-                                        >
-                                          <span
-                                            className="data-highlight"
-                                            style={{
-                                              fontWeight: "bold",
-                                              fontSize: "0.9em",
-                                            }}
-                                          >
-                                            Cost: {cost} Fan Tokens
-                                          </span>
-                                          {joined ? (
-                                            <span
-                                              style={{
-                                                color: "#34D0F8",
-                                                fontWeight: "bold",
-                                                fontSize: "0.9em",
-                                              }}
-                                            >
-                                              ✓ Joined / 已參加
-                                            </span>
-                                          ) : (
-                                            <button
-                                              onClick={() =>
-                                                handleJoinCampaign(
-                                                  camp.objectId,
-                                                  fanTokenInfo.objectId,
-                                                  cost
-                                                )
-                                              }
-                                              disabled={
-                                                joiningCampaign ===
-                                                  camp.objectId || !canJoin
-                                              }
-                                              className={
-                                                canJoin ? "gradient-button" : ""
-                                              }
-                                              style={{
-                                                padding: "6px 14px",
-                                                fontSize: "0.85em",
-                                                backgroundColor: canJoin
-                                                  ? undefined
-                                                  : "rgba(37, 41, 52, 0.8)",
-                                                color: canJoin
-                                                  ? undefined
-                                                  : "#999",
-                                                border: canJoin
-                                                  ? undefined
-                                                  : "1px solid rgba(52, 208, 248, 0.2)",
-                                                borderRadius: "8px",
-                                                cursor: canJoin
-                                                  ? "pointer"
-                                                  : "not-allowed",
-                                              }}
-                                            >
-                                              {joiningCampaign ===
-                                              camp.data?.objectId
-                                                ? "Joining..."
-                                                : "Join Campaign"}
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: "0.8em", color: "#D0D0D0" }}>
-                            (Fan Token account will be created on first
-                            purchase)
-                          </span>
-                        )}
-                      </>
-                    );
+                    if (!isSubscribed && creatorId && !content.hasAccess) {
+                      return (
+                        <button
+                          onClick={() =>
+                            handleSubscribe(content.creator, creatorId)
+                          }
+                          disabled={!account || subscribing === creatorId}
+                          className="gradient-button"
+                          style={{
+                            padding: "10px 20px",
+                            fontSize: "0.9em",
+                            marginBottom: "10px",
+                            marginRight: "10px",
+                          }}
+                        >
+                          {subscribing === creatorId
+                            ? "Subscribing... / 訂閱中..."
+                            : "Subscribe to Creator / 訂閱創作者"}
+                        </button>
+                      );
+                    }
+                    return null;
                   })()}
-                </p>
 
-                {/* Subscription Button */}
-                {(() => {
-                  const creator = creators.get(content.creator);
-                  const creatorId = creator?.data?.objectId;
-                  const isSubscribed =
-                    creatorId && subscriptions.has(creatorId);
-
-                  if (!isSubscribed && creatorId && !content.hasAccess) {
-                    return (
+                  {content.hasAccess ? (
+                    <div>
                       <button
                         onClick={() =>
-                          handleSubscribe(content.creator, creatorId)
+                          handleViewContent(
+                            content.contentId,
+                            content.blobId,
+                            content.creator,
+                            content.sealSuffix,
+                            content.creatorId,
+                            content.allowlistId
+                          )
                         }
-                        disabled={!account || subscribing === creatorId}
+                        disabled={loading}
                         className="gradient-button"
                         style={{
                           padding: "10px 20px",
-                          fontSize: "0.9em",
-                          marginBottom: "10px",
                           marginRight: "10px",
                         }}
                       >
-                        {subscribing === creatorId
-                          ? "Subscribing... / 訂閱中..."
-                          : "Subscribe to Creator / 訂閱創作者"}
+                        {loading
+                          ? "Loading... / 載入中..."
+                          : "View Content / 查看內容"}
                       </button>
-                    );
-                  }
-                  return null;
-                })()}
-
-                {content.hasAccess ? (
-                  <div>
+                      {content.purchased && (
+                        <span style={{ fontSize: "0.9em", color: "#34D0F8" }}>
+                          ✓ Purchased / 已購買
+                        </span>
+                      )}
+                      {!content.purchased &&
+                        subscriptions.has(content.creatorId) && (
+                          <span style={{ fontSize: "0.9em", color: "#A300FF" }}>
+                            ✓ Access via Subscription / 通過訂閱訪問
+                          </span>
+                        )}
+                    </div>
+                  ) : (
                     <button
                       onClick={() =>
-                        handleViewContent(
-                          content.contentId,
-                          content.blobId,
-                          content.creator,
-                          content.sealSuffix,
-                          content.creatorId,
-                          content.allowlistId
-                        )
+                        handlePurchase(content.contentId, content.price)
                       }
-                      disabled={loading}
+                      disabled={!account || purchasing === content.contentId}
                       className="gradient-button"
                       style={{
                         padding: "10px 20px",
-                        marginRight: "10px",
                       }}
                     >
-                      {loading
-                        ? "Loading... / 載入中..."
-                        : "View Content / 查看內容"}
+                      {purchasing === content.contentId
+                        ? "Purchasing... / 購買中..."
+                        : `Purchase (${
+                            Number(content.price) / 1e9
+                          } SUI) / 購買`}
                     </button>
-                    {content.purchased && (
-                      <span style={{ fontSize: "0.9em", color: "#34D0F8" }}>
-                        ✓ Purchased / 已購買
-                      </span>
-                    )}
-                    {!content.purchased &&
-                      subscriptions.has(content.creatorId) && (
-                        <span style={{ fontSize: "0.9em", color: "#A300FF" }}>
-                          ✓ Access via Subscription / 通過訂閱訪問
-                        </span>
-                      )}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() =>
-                      handlePurchase(content.contentId, content.price)
-                    }
-                    disabled={!account || purchasing === content.contentId}
-                    className="gradient-button"
-                    style={{
-                      padding: "10px 20px",
-                    }}
-                  >
-                    {purchasing === content.contentId
-                      ? "Purchasing... / 購買中..."
-                      : `Purchase (${Number(content.price) / 1e9} SUI) / 購買`}
-                  </button>
-                )}
-              </div>
-            ))
-          )}
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 

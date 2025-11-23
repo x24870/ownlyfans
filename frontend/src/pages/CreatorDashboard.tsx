@@ -170,7 +170,7 @@ export default function CreatorDashboard() {
     setError(null);
 
     try {
-      const tx = registerCreatorTransaction(priceInMist);
+      const tx = await registerCreatorTransaction(priceInMist);
 
       signAndExecute(
         { transaction: tx as any },

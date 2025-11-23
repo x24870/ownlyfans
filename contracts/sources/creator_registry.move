@@ -2,6 +2,7 @@ module ownlyfans::creator_registry;
 
 use sui::event;
 use sui::bcs;
+use ownlyfans::fan_token::{Self, CreatorStatsMap};
 
 /// Creator information stored on-chain
 /// 創作者信息存儲在鏈上
@@ -24,6 +25,7 @@ public struct CreatorRegistered has copy, drop {
 /// Register as a creator
 /// 註冊為創作者
 public entry fun register_creator(
+    stats_map: &mut CreatorStatsMap,
     subscription_price: u64,
     ctx: &mut TxContext
 ) {
@@ -42,6 +44,10 @@ public entry fun register_creator(
     };
     
     let creator_id = sui::object::id(&creator);
+    
+    // Create creator token statistics
+    // 創建創作者代幣統計
+    fan_token::create_creator_stats(stats_map, owner, ctx);
     
     // Emit event
     // 發出事件

@@ -10,7 +10,7 @@ import { suiClient } from "./suiClient";
 // Contract package ID (will be set after deployment)
 // 合約包 ID（部署後設定）
 let CONTRACT_PACKAGE_ID =
-  "0x80655078fe831291c08ad1e428ef4d585fe3775db9b04b915a3ca196321102b3";
+  "0x962338f67350fc914b7f5c27b06084df75050a2bc57629a7ca051f542b4e3efe";
 
 export function setContractPackageId(packageId: string) {
   CONTRACT_PACKAGE_ID = packageId;
@@ -57,17 +57,81 @@ export async function getFanTokenAccount(
 }
 
 /**
+ * Get all Fan Token Accounts for a user
+ * 獲取用戶的所有 Fan Token 帳戶
+ */
+export async function getAllFanTokenAccounts(userAddress: string) {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return [];
+    }
+
+    const objects = await suiClient.getOwnedObjects({
+      owner: userAddress,
+      filter: {
+        StructType: `${CONTRACT_PACKAGE_ID}::fan_token::FanTokenAccount`,
+      },
+      options: {
+        showContent: true,
+      },
+    });
+
+    return objects.data.map((obj) => obj.data).filter(Boolean);
+  } catch (error) {
+    console.error("Error fetching all fan token accounts:", error);
+    return [];
+  }
+}
+
+/**
+ * Get total burned tokens across all creators for a user
+ * 獲取用戶在所有創作者中總共燒毀的代幣數量
+ */
+export async function getTotalBurnedTokens(
+  userAddress: string
+): Promise<bigint> {
+  try {
+    const accounts = await getAllFanTokenAccounts(userAddress);
+    let totalBurned = BigInt(0);
+
+    for (const account of accounts) {
+      const fields = (account?.content as any)?.fields;
+      if (fields?.total_burned) {
+        totalBurned += BigInt(fields.total_burned);
+      }
+    }
+
+    return totalBurned;
+  } catch (error) {
+    console.error("Error calculating total burned tokens:", error);
+    return BigInt(0);
+  }
+}
+
+/**
  * Burn Fan Tokens
  * 銷毀 Fan Token
  */
 export async function burnFanTokenTransaction(
   accountId: string,
+  creatorAddress: string,
   amount: bigint
 ): Promise<Transaction> {
   const tx = new Transaction();
+
+  // Get CreatorTokenStats
+  const creatorStatsId = await getCreatorTokenStatsId(creatorAddress);
+  if (!creatorStatsId) {
+    throw new Error("CreatorTokenStats not found for this creator.");
+  }
+
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::fan_token::burn_token`,
-    arguments: [tx.object(accountId), tx.pure.u64(amount)],
+    arguments: [
+      tx.object(accountId),
+      tx.object(creatorStatsId),
+      tx.pure.u64(amount),
+    ],
   });
   return tx;
 }
@@ -97,14 +161,26 @@ export function createCampaignTransaction(
  * Join a Creator Campaign
  * 參加創作者活動
  */
-export function joinCampaignTransaction(
+export async function joinCampaignTransaction(
   campaignId: string,
-  fanTokenAccountId: string
-): Transaction {
+  fanTokenAccountId: string,
+  creatorAddress: string
+): Promise<Transaction> {
   const tx = new Transaction();
+
+  // Get CreatorTokenStats
+  const creatorStatsId = await getCreatorTokenStatsId(creatorAddress);
+  if (!creatorStatsId) {
+    throw new Error("CreatorTokenStats not found for this creator.");
+  }
+
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::campaign::join_campaign`,
-    arguments: [tx.object(campaignId), tx.object(fanTokenAccountId)],
+    arguments: [
+      tx.object(campaignId),
+      tx.object(fanTokenAccountId),
+      tx.object(creatorStatsId),
+    ],
   });
   return tx;
 }
@@ -289,13 +365,22 @@ export async function buildSealApproveTransaction(
  * Create content on-chain
  * 在鏈上創建內容
  */
-export function registerCreatorTransaction(
+export async function registerCreatorTransaction(
   subscriptionPrice: bigint
-): Transaction {
+): Promise<Transaction> {
   const tx = new Transaction();
+
+  // Get CreatorStatsMap
+  const statsMapId = await getCreatorStatsMapId();
+  if (!statsMapId) {
+    throw new Error(
+      "CreatorStatsMap not found. Please ensure the contract is properly initialized."
+    );
+  }
+
   tx.moveCall({
     target: `${CONTRACT_PACKAGE_ID}::creator_registry::register_creator`,
-    arguments: [tx.pure.u64(subscriptionPrice)],
+    arguments: [tx.object(statsMapId), tx.pure.u64(subscriptionPrice)],
   });
   return tx;
 }
@@ -306,12 +391,11 @@ export async function subscribeCreatorTransaction(
   sender?: string,
   referralAddress?: string | null
 ): Promise<Transaction> {
-  const tx = new Transaction();
-  if (sender) {
-    tx.setSender(sender);
-  } else {
+  if (!sender) {
     throw new Error("Sender address required for subscription");
   }
+
+  const tx = new Transaction();
 
   // Get creator owner address
   const creatorInfo = await getCreatorInfo(creatorId);
@@ -337,6 +421,12 @@ export async function subscribeCreatorTransaction(
     isNewAccount = true;
   }
 
+  // Get CreatorTokenStats
+  const creatorStatsId = await getCreatorTokenStatsId(creatorOwner);
+  if (!creatorStatsId) {
+    throw new Error("CreatorTokenStats not found for this creator.");
+  }
+
   const [paymentCoin] = tx.splitCoins(tx.gas, [subscriptionPrice]);
 
   // Use referral address from parameter or default to 0x0
@@ -347,6 +437,7 @@ export async function subscribeCreatorTransaction(
     arguments: [
       tx.object(creatorId),
       fanTokenAccountArg,
+      tx.object(creatorStatsId),
       paymentCoin,
       tx.pure.address(referral),
       tx.object(SUI_CLOCK_OBJECT_ID),
@@ -356,6 +447,9 @@ export async function subscribeCreatorTransaction(
   if (isNewAccount) {
     tx.transferObjects([fanTokenAccountArg], tx.pure.address(sender));
   }
+
+  // Note: Don't call tx.setSender here - let signAndExecute handle it
+  // 注意：不要在這裡調用 tx.setSender - 讓 signAndExecute 處理它
 
   return tx;
 }
@@ -451,6 +545,19 @@ export async function purchaseContentTransaction({
     throw new Error("Creator address not found for this content.");
   }
 
+  // Get CreatorStatsMap and CreatorTokenStats
+  const statsMapId = await getCreatorStatsMapId();
+  if (!statsMapId) {
+    throw new Error(
+      "CreatorStatsMap not found. Please ensure the contract is properly initialized."
+    );
+  }
+
+  const creatorStatsId = await getCreatorTokenStatsId(creatorAddress);
+  if (!creatorStatsId) {
+    throw new Error("CreatorTokenStats not found for this creator.");
+  }
+
   // Check for existing FanTokenAccount
   const existingAccount = await getFanTokenAccount(creatorAddress, userAddress);
   let fanTokenAccountArg;
@@ -476,6 +583,7 @@ export async function purchaseContentTransaction({
       tx.object(contentId),
       tx.object(resolvedAllowlistId),
       fanTokenAccountArg,
+      tx.object(creatorStatsId),
       paymentCoin,
       tx.pure.address(referral),
     ],
@@ -857,6 +965,108 @@ export async function getAllCreators() {
   } catch (error) {
     console.error("Error fetching all creators:", error);
     return [];
+  }
+}
+
+/**
+ * Get CreatorStatsMap ID from initialization event
+ * 從初始化事件獲取 CreatorStatsMap ID
+ */
+export async function getCreatorStatsMapId(): Promise<string | null> {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return null;
+    }
+
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveModule: {
+          package: CONTRACT_PACKAGE_ID,
+          module: "fan_token",
+        },
+      },
+      limit: 100,
+      order: "descending",
+    });
+
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (parsedJson?.stats_map_id) {
+        return parsedJson.stats_map_id;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error fetching CreatorStatsMap ID:", error);
+    return null;
+  }
+}
+
+/**
+ * Get Creator Token Stats ID from CreatorStatsCreated events
+ * 從 CreatorStatsCreated 事件獲取創作者代幣統計 ID
+ */
+export async function getCreatorTokenStatsId(
+  creatorAddress: string
+): Promise<string | null> {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return null;
+    }
+
+    // Query CreatorStatsCreated events
+    // 查詢 CreatorStatsCreated 事件
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveEventType: `${CONTRACT_PACKAGE_ID}::fan_token::CreatorStatsCreated`,
+      },
+      limit: 100,
+      order: "descending",
+    });
+
+    // Find the event for this creator
+    // 找到此創作者的事件
+    for (const event of events.data) {
+      const parsedJson = event.parsedJson as any;
+      if (parsedJson?.creator === creatorAddress && parsedJson?.stats_id) {
+        return parsedJson.stats_id;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error fetching CreatorTokenStats ID:", error);
+    return null;
+  }
+}
+
+/**
+ * Get Creator Token Statistics
+ * 獲取創作者代幣統計
+ */
+export async function getCreatorTokenStats(creatorAddress: string) {
+  try {
+    if (!CONTRACT_PACKAGE_ID) {
+      return null;
+    }
+
+    const statsId = await getCreatorTokenStatsId(creatorAddress);
+    if (!statsId) {
+      return null;
+    }
+
+    const obj = await suiClient.getObject({
+      id: statsId,
+      options: {
+        showContent: true,
+      },
+    });
+
+    return obj.data;
+  } catch (error) {
+    console.error("Error fetching creator token stats:", error);
+    return null;
   }
 }
 
