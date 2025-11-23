@@ -10,9 +10,11 @@ import {
   getCreatedObjectsFromTransaction,
   registerCreatorTransaction,
   getCreatorByOwner,
+  getCreatorInfo,
   createCampaignTransaction,
   getCreatorCampaigns,
 } from "../utils/contract";
+import { suiClient } from "../utils/suiClient";
 import {
   encryptWithSeal,
   encodeSealIdentityFromAddress,
@@ -173,10 +175,84 @@ export default function CreatorDashboard() {
       signAndExecute(
         { transaction: tx as any },
         {
-          onSuccess: async () => {
-            await loadCreatorInfo();
-            setRegistering(false);
-            setSubscriptionPrice("1.0");
+          onSuccess: async (result: any) => {
+            // Try to get Creator ID from transaction result first
+            // 首先嘗試從交易結果中獲取 Creator ID
+            let creatorId: string | null = null;
+
+            if (result?.digest) {
+              try {
+                const txResult = await suiClient.getTransactionBlock({
+                  digest: result.digest,
+                  options: {
+                    showObjectChanges: true,
+                    showEffects: true,
+                  },
+                });
+
+                // Look for created Creator object
+                // 查找創建的 Creator 對象
+                if (txResult.objectChanges) {
+                  for (const change of txResult.objectChanges) {
+                    if (
+                      change.type === "created" &&
+                      "objectType" in change &&
+                      change.objectType?.includes("Creator")
+                    ) {
+                      creatorId = (change as any).objectId;
+                      break;
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn(
+                  "Could not get Creator from transaction result:",
+                  e
+                );
+              }
+            }
+
+            // If we got the Creator ID, fetch it directly
+            // 如果獲得了 Creator ID，直接獲取
+            if (creatorId) {
+              try {
+                const creator = await getCreatorInfo(creatorId);
+                setCreatorInfo(creator);
+                setRegistering(false);
+                setSubscriptionPrice("1.0");
+                return;
+              } catch (e) {
+                console.warn("Could not fetch Creator by ID, will retry:", e);
+              }
+            }
+
+            // Otherwise, retry loading with delay (wait for event indexing)
+            // 否則，延遲後重試載入（等待事件索引）
+            const maxRetries = 5;
+            let retries = 0;
+
+            const retryLoad = async () => {
+              await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
+              const creator = await getCreatorByOwner(account.address);
+
+              if (creator) {
+                setCreatorInfo(creator);
+                setRegistering(false);
+                setSubscriptionPrice("1.0");
+              } else if (retries < maxRetries) {
+                retries++;
+                await retryLoad();
+              } else {
+                // Final attempt after all retries
+                // 所有重試後的最後嘗試
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+                await loadCreatorInfo();
+                setRegistering(false);
+                setSubscriptionPrice("1.0");
+              }
+            };
+
+            await retryLoad();
           },
           onError: (error) => {
             setError(
