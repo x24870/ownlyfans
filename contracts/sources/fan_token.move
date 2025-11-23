@@ -344,6 +344,21 @@ fun init(ctx: &mut TxContext) {
     transfer::share_object(map);
 }
 
+/// Create and share CreatorStatsMap for testing (test-only)
+/// 為測試創建並共享 CreatorStatsMap（僅測試用）
+#[test_only]
+public fun create_and_share_stats_map_for_testing(ctx: &mut TxContext) {
+    let map = CreatorStatsMap {
+        id: sui::object::new(ctx),
+        map: table::new(ctx),
+    };
+    let map_id = sui::object::id(&map);
+    event::emit(CreatorStatsMapInitialized {
+        stats_map_id: map_id,
+    });
+    transfer::share_object(map);
+}
+
 /// Create creator token statistics
 /// 創建創作者代幣統計
 public fun create_creator_stats(
