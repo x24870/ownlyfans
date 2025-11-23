@@ -3,6 +3,7 @@ import { useCurrentAccount, ConnectButton } from "@mysten/dapp-kit";
 import CreatorDashboard from "./pages/CreatorDashboard";
 import FanDashboard from "./pages/FanDashboard";
 import RevenueDashboard from "./pages/RevenueDashboard";
+import ownlyfansLogo from "./assets/ownlyfans_logo.png";
 import "./App.css";
 
 function App() {
@@ -35,7 +36,7 @@ function App() {
         <header className="app-header">
           <div className="logo-container">
             <img
-              src="/ownlyfans_logo.png"
+              src={ownlyfansLogo}
               alt="Ownlyfans Logo"
               className="app-logo"
             />
